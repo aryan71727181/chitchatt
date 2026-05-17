@@ -9,7 +9,7 @@ type Tab = {
   badge?: number;
 };
 const tabs: Tab[] = [
-  { to: "/", icon: Home, label: "Home" },
+  { to: "/home", icon: Home, label: "Home" },
   { to: "/discover", icon: Compass, label: "Discover" },
   { to: "/rooms", icon: Mic, label: "Rooms", center: true },
   { to: "/messages", icon: MessageCircle, label: "Messages", badge: 12 },
@@ -23,7 +23,7 @@ export function BottomNav() {
     <nav className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-5 pt-2 pointer-events-none">
       <div className="mx-auto max-w-md glass-strong rounded-3xl px-2 py-2 flex items-end justify-between shadow-card pointer-events-auto relative">
         {tabs.map((t) => {
-          const active = pathname === t.to || (t.to !== "/" && pathname.startsWith(t.to));
+          const active = pathname === t.to || pathname.startsWith(t.to + "/");
           const Icon = t.icon;
           if (t.center) {
             return (
