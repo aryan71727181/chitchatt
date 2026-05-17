@@ -1,16 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Share2, MoreHorizontal, ArrowLeft, Camera, Pencil, BadgeCheck, Calendar, Gift, Wallet, Crown, Shield, Heart, Music, Moon, Gamepad2, MapPin, Star } from "lucide-react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { Share2, MoreHorizontal, ArrowLeft, Pencil, BadgeCheck, Calendar, Gift, Wallet, Crown, Shield, Heart, Music, Moon, Gamepad2, MapPin, Star, LogOut } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-import { avatars } from "@/lib/mock";
-import cover from "@/assets/profile-cover.jpg";
+import { defaultAvatar, defaultCover, useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/profile")({
-  head: () => ({
-    meta: [
-      { title: "Profile — ChitChat" },
-      { name: "description", content: "Your premium ChitChat profile." },
-    ],
-  }),
+  head: () => ({ meta: [{ title: "Profile — ChitChat" }] }),
   component: Profile,
 });
 
@@ -23,69 +17,86 @@ const rewards = [
 ];
 
 function Profile() {
+  const { profile, user, signOut, loading } = useAuth();
+  const navigate = useNavigate();
+
+  if (loading || !profile) {
+    return (
+      <AppShell>
+        <div className="min-h-screen grid place-items-center text-white/50 text-sm">Loading…</div>
+      </AppShell>
+    );
+  }
+
+  const seed = profile.id;
+  const avatar = profile.profile_image || defaultAvatar(seed);
+  const cover = profile.cover_image || defaultCover(seed);
+  const level = Math.max(1, Math.floor((profile.vibe_score ?? 0) / 4));
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate({ to: "/auth", replace: true });
+  };
+
   return (
     <AppShell>
-      {/* Cover */}
       <div className="relative h-56 overflow-hidden">
         <img src={cover} alt="" className="absolute inset-0 h-full w-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-background" />
         <div className="relative px-4 pt-12 flex items-center justify-between">
-          <button className="h-10 w-10 rounded-full glass grid place-items-center"><ArrowLeft className="h-4.5 w-4.5" /></button>
+          <button className="h-10 w-10 rounded-full glass grid place-items-center"><ArrowLeft className="h-4 w-4" /></button>
           <div className="flex items-center gap-2">
-            <button className="h-10 w-10 rounded-full glass grid place-items-center"><Share2 className="h-4.5 w-4.5" /></button>
-            <button className="h-10 w-10 rounded-full glass grid place-items-center"><MoreHorizontal className="h-4.5 w-4.5" /></button>
+            <button className="h-10 w-10 rounded-full glass grid place-items-center"><Share2 className="h-4 w-4" /></button>
+            <button onClick={handleSignOut} aria-label="Sign out" className="h-10 w-10 rounded-full glass grid place-items-center"><LogOut className="h-4 w-4" /></button>
+            <button className="h-10 w-10 rounded-full glass grid place-items-center"><MoreHorizontal className="h-4 w-4" /></button>
           </div>
         </div>
-        <button className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 px-3 py-2 rounded-full glass text-xs font-medium">
-          <Camera className="h-3.5 w-3.5" /> Edit Cover
-        </button>
       </div>
 
-      {/* Identity */}
       <section className="px-5 -mt-14 relative">
         <div className="flex items-end gap-4">
           <div className="relative">
             <span className="absolute -inset-1 rounded-full gradient-electric blur-md opacity-80" />
-            <img src={avatars[1]} alt="Prince" className="relative h-24 w-24 rounded-full object-cover ring-4 ring-background" />
-            <button className="absolute bottom-0 right-0 h-7 w-7 rounded-full gradient-electric grid place-items-center ring-2 ring-background">
+            <img src={avatar} alt={profile.username} className="relative h-24 w-24 rounded-full object-cover ring-4 ring-background bg-white/5" />
+            <Link to="/profile/edit" className="absolute bottom-0 right-0 h-7 w-7 rounded-full gradient-electric grid place-items-center ring-2 ring-background">
               <Pencil className="h-3 w-3 text-white" />
-            </button>
+            </Link>
           </div>
           <div className="pb-1 flex-1 min-w-0">
-            <h1 className="text-2xl font-bold flex items-center gap-1.5">
-              Prince <BadgeCheck className="h-5 w-5 text-electric" />
+            <h1 className="text-2xl font-bold flex items-center gap-1.5 truncate">
+              <span className="truncate">{profile.username}</span> <BadgeCheck className="h-5 w-5 text-electric shrink-0" />
             </h1>
-            <p className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
-              @prince.vibes
+            <p className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5 truncate">
+              <span className="truncate">@{profile.username.toLowerCase()}</span>
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[oklch(0.3_0.15_290)] text-[oklch(0.85_0.18_295)] text-[10px] font-bold">
-                <Crown className="h-2.5 w-2.5" /> Lv.24
+                <Crown className="h-2.5 w-2.5" /> Lv.{level}
               </span>
             </p>
           </div>
         </div>
 
-        <p className="mt-3 text-sm">Late night thinker 🌙 <span className="text-muted-foreground">· Talks, vibes & chaos.</span></p>
-        <p className="mt-1 text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" /> Mumbai, India</p>
+        <p className="mt-3 text-sm">{profile.bio || "Add a bio in your profile settings ✨"}</p>
+        <p className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
+          <MapPin className="h-3 w-3" /> {profile.location || "Earth"} {profile.age ? `· ${profile.age}` : ""}
+        </p>
 
-        {/* Vibe Score */}
         <div className="mt-4 glass-strong rounded-2xl p-4 flex items-center gap-4 shadow-card">
           <div className="flex-1">
             <p className="text-[10px] tracking-widest text-muted-foreground">VIBE SCORE</p>
-            <div className="text-3xl font-bold text-gradient mt-1">87</div>
-            <p className="text-[10px] text-muted-foreground mt-0.5">Top 8% this week</p>
+            <div className="text-3xl font-bold text-gradient mt-1">{profile.vibe_score}</div>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Your energy this week</p>
           </div>
           <div className="flex items-end gap-1 h-12">
             {[6,9,5,11,8,12,9,12].map((h,i)=>(<span key={i} className="w-1.5 rounded-full gradient-electric" style={{height:`${h*4}px`}} />))}
           </div>
         </div>
 
-        {/* Stats */}
         <div className="mt-4 glass rounded-2xl p-4 grid grid-cols-4 gap-1">
           {[
-            { v: "12.4K", l: "Followers" },
-            { v: "320", l: "Following" },
-            { v: "3.4K", l: "Vibes" },
-            { v: "562", l: "Likes" },
+            { v: fmt(profile.followers), l: "Followers" },
+            { v: fmt(profile.following), l: "Following" },
+            { v: fmt(profile.vibe_score * 39), l: "Vibes" },
+            { v: fmt(profile.vibe_score * 6), l: "Likes" },
           ].map((s) => (
             <div key={s.l} className="text-center">
               <p className="font-bold text-base">{s.v}</p>
@@ -94,13 +105,11 @@ function Profile() {
           ))}
         </div>
 
-        {/* Buttons */}
         <div className="mt-4 grid grid-cols-2 gap-3">
-          <button className="h-11 rounded-2xl gradient-electric text-white font-semibold text-sm shadow-glow-soft active:scale-95 transition-transform">Edit Profile</button>
+          <Link to="/profile/edit" className="h-11 grid place-items-center rounded-2xl gradient-electric text-white font-semibold text-sm shadow-glow-soft active:scale-95 transition-transform">Edit Profile</Link>
           <button className="h-11 rounded-2xl glass-strong font-semibold text-sm active:scale-95 transition-transform">Share Profile</button>
         </div>
 
-        {/* Rewards */}
         <div className="mt-6 flex gap-3 overflow-x-auto no-scrollbar -mx-5 px-5 pb-2">
           {rewards.map((r) => {
             const Icon = r.icon;
@@ -118,7 +127,6 @@ function Profile() {
           })}
         </div>
 
-        {/* Interests */}
         <div className="mt-6 glass rounded-2xl p-4">
           <p className="text-xs font-semibold text-muted-foreground mb-3 flex items-center gap-1.5"><Heart className="h-3.5 w-3.5 text-[oklch(0.7_0.27_350)]" /> Interests</p>
           <div className="flex flex-wrap gap-2">
@@ -138,25 +146,15 @@ function Profile() {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="mt-6 glass rounded-2xl p-3">
-          <div className="flex gap-1 text-xs">
-            {["Posts", "Rooms", "Gifts", "Moments"].map((t, i) => (
-              <button key={t} className={`flex-1 h-9 rounded-xl font-medium transition-all ${i === 0 ? "gradient-electric text-white shadow-glow-soft" : "text-muted-foreground"}`}>
-                {t}
-              </button>
-            ))}
-          </div>
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            {[avatars[0], avatars[2], avatars[4], avatars[5], avatars[3], avatars[1]].map((a, i) => (
-              <div key={i} className="relative aspect-square rounded-xl overflow-hidden">
-                <img src={a} alt="" className="h-full w-full object-cover" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-              </div>
-            ))}
-          </div>
+        <div className="mt-6 mb-2 px-1 text-[10px] text-muted-foreground text-center">
+          Logged in as {user?.email}
         </div>
       </section>
     </AppShell>
   );
+}
+
+function fmt(n: number) {
+  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, "") + "K";
+  return String(n);
 }

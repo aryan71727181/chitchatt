@@ -6,7 +6,11 @@ import {
   useRouter,
   HeadContent,
   Scripts,
+  useRouterState,
+  useNavigate,
 } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { AuthProvider, useAuth } from "@/lib/auth";
 
 import appCss from "../styles.css?url";
 
@@ -122,7 +126,28 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <Outlet />
+      <AuthProvider>
+        <AuthGate>
+          <Outlet />
+        </AuthGate>
+      </AuthProvider>
     </QueryClientProvider>
   );
+}
+
+const PUBLIC_PATHS = new Set(["/", "/auth"]);
+
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const { session, loading } = useAuth();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (loading) return;
+    if (!session && !PUBLIC_PATHS.has(pathname)) {
+      navigate({ to: "/auth", replace: true });
+    }
+  }, [session, loading, pathname, navigate]);
+
+  return <>{children}</>;
 }
