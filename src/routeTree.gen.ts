@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as RoomsRouteImport } from './routes/rooms'
+import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as MessagesRouteImport } from './routes/messages'
 import { Route as DiscoverRouteImport } from './routes/discover'
 import { Route as IndexRouteImport } from './routes/index'
@@ -17,6 +18,11 @@ import { Route as IndexRouteImport } from './routes/index'
 const RoomsRoute = RoomsRouteImport.update({
   id: '/rooms',
   path: '/rooms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MessagesRoute = MessagesRouteImport.update({
@@ -39,12 +45,14 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/discover': typeof DiscoverRoute
   '/messages': typeof MessagesRoute
+  '/profile': typeof ProfileRoute
   '/rooms': typeof RoomsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/discover': typeof DiscoverRoute
   '/messages': typeof MessagesRoute
+  '/profile': typeof ProfileRoute
   '/rooms': typeof RoomsRoute
 }
 export interface FileRoutesById {
@@ -52,20 +60,22 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/discover': typeof DiscoverRoute
   '/messages': typeof MessagesRoute
+  '/profile': typeof ProfileRoute
   '/rooms': typeof RoomsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/discover' | '/messages' | '/rooms'
+  fullPaths: '/' | '/discover' | '/messages' | '/profile' | '/rooms'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/discover' | '/messages' | '/rooms'
-  id: '__root__' | '/' | '/discover' | '/messages' | '/rooms'
+  to: '/' | '/discover' | '/messages' | '/profile' | '/rooms'
+  id: '__root__' | '/' | '/discover' | '/messages' | '/profile' | '/rooms'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DiscoverRoute: typeof DiscoverRoute
   MessagesRoute: typeof MessagesRoute
+  ProfileRoute: typeof ProfileRoute
   RoomsRoute: typeof RoomsRoute
 }
 
@@ -76,6 +86,13 @@ declare module '@tanstack/react-router' {
       path: '/rooms'
       fullPath: '/rooms'
       preLoaderRoute: typeof RoomsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/messages': {
@@ -106,6 +123,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DiscoverRoute: DiscoverRoute,
   MessagesRoute: MessagesRoute,
+  ProfileRoute: ProfileRoute,
   RoomsRoute: RoomsRoute,
 }
 export const routeTree = rootRouteImport
