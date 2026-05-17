@@ -29,7 +29,7 @@ export function BottomNav() {
             return (
               <Link
                 key={t.to}
-                to={t.to}
+                to={t.to as any}
                 className="relative -mt-8 flex flex-col items-center justify-center"
               >
                 <span className="relative h-16 w-16 rounded-full gradient-electric grid place-items-center animate-glow-pulse">
@@ -44,7 +44,7 @@ export function BottomNav() {
           return (
             <Link
               key={t.to}
-              to={t.to}
+              to={t.to as any}
               className="relative flex-1 flex flex-col items-center gap-1 py-2 transition-transform active:scale-95"
             >
               <span className="relative">
