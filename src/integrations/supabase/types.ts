@@ -74,12 +74,180 @@ export type Database = {
         }
         Relationships: []
       }
+      room_members: {
+        Row: {
+          avatar: string | null
+          joined_at: string
+          role: string
+          room_id: string
+          user_id: string
+          username: string
+        }
+        Insert: {
+          avatar?: string | null
+          joined_at?: string
+          role?: string
+          room_id: string
+          user_id: string
+          username: string
+        }
+        Update: {
+          avatar?: string | null
+          joined_at?: string
+          role?: string
+          room_id?: string
+          user_id?: string
+          username?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "room_members_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      room_messages: {
+        Row: {
+          avatar: string | null
+          created_at: string
+          gift_emoji: string | null
+          id: string
+          kind: string
+          room_id: string
+          text: string | null
+          user_id: string
+          username: string
+        }
+        Insert: {
+          avatar?: string | null
+          created_at?: string
+          gift_emoji?: string | null
+          id?: string
+          kind?: string
+          room_id: string
+          text?: string | null
+          user_id: string
+          username: string
+        }
+        Update: {
+          avatar?: string | null
+          created_at?: string
+          gift_emoji?: string | null
+          id?: string
+          kind?: string
+          room_id?: string
+          text?: string | null
+          user_id?: string
+          username?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "room_messages_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      room_seats: {
+        Row: {
+          avatar: string | null
+          joined_at: string | null
+          locked: boolean
+          muted: boolean
+          room_id: string
+          seat_index: number
+          user_id: string | null
+          username: string | null
+        }
+        Insert: {
+          avatar?: string | null
+          joined_at?: string | null
+          locked?: boolean
+          muted?: boolean
+          room_id: string
+          seat_index: number
+          user_id?: string | null
+          username?: string | null
+        }
+        Update: {
+          avatar?: string | null
+          joined_at?: string | null
+          locked?: boolean
+          muted?: boolean
+          room_id?: string
+          seat_index?: number
+          user_id?: string | null
+          username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "room_seats_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rooms: {
+        Row: {
+          banner: string | null
+          category: string
+          created_at: string
+          description: string | null
+          id: string
+          listener_count: number
+          name: string
+          owner_id: string
+          owner_username: string
+          password_hash: string | null
+          privacy: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          banner?: string | null
+          category: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          listener_count?: number
+          name: string
+          owner_id: string
+          owner_username: string
+          password_hash?: string | null
+          privacy?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          banner?: string | null
+          category?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          listener_count?: number
+          name?: string
+          owner_id?: string
+          owner_username?: string
+          password_hash?: string | null
+          privacy?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      is_room_mod: { Args: { _room: string; _user: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never
