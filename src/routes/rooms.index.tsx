@@ -6,7 +6,7 @@ import { useLiveRooms } from "@/lib/useRooms";
 import { RoomCard } from "@/components/RoomCard";
 import { CreateRoomFab, CreateRoomModal } from "@/components/CreateRoomModal";
 
-export const Route = createFileRoute("/rooms")({
+export const Route = createFileRoute("/rooms/")({
   head: () => ({
     meta: [
       { title: "Live Rooms — ChitChat" },
