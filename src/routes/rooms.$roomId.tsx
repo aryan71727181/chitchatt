@@ -749,13 +749,21 @@ function SeatView({
       <div className="flex flex-col items-center gap-1.5">
         <button
           onClick={seat.locked ? onLockToggle : onTake}
-          className={`${size} rounded-full glass grid place-items-center border-2 border-dashed border-white/15 active:scale-95 ${
-            seat.locked ? "opacity-60" : ""
-          }`}
+          className={`${size} rounded-full glass grid place-items-center border-2 border-dashed ${
+            host ? "border-electric/60 shadow-glow-soft" : "border-white/15"
+          } active:scale-95 ${seat.locked ? "opacity-60" : ""}`}
         >
-          {seat.locked ? <Lock className="h-4 w-4 text-muted-foreground" /> : <Plus className="h-5 w-5 text-muted-foreground" />}
+          {seat.locked ? (
+            <Lock className="h-4 w-4 text-muted-foreground" />
+          ) : host ? (
+            <Crown className="h-6 w-6 text-electric" />
+          ) : (
+            <Plus className="h-5 w-5 text-muted-foreground" />
+          )}
         </button>
-        <span className="text-[10px] text-muted-foreground">{seat.locked ? "Locked" : "Empty"}</span>
+        <span className={`text-[10px] tracking-wider font-semibold ${host ? "text-electric" : "text-muted-foreground"}`}>
+          {seat.locked ? "Locked" : host ? "HOST SEAT" : "Empty"}
+        </span>
       </div>
     );
   }
@@ -794,7 +802,7 @@ function SeatView({
         {seat.username}
         {isMe ? " (you)" : ""}
       </span>
-      {host && <span className="text-[9px] tracking-wider text-electric font-semibold">OWNER</span>}
+      {host && <span className="text-[9px] tracking-[0.15em] text-electric font-semibold">HOST SEAT</span>}
     </div>
   );
 }
