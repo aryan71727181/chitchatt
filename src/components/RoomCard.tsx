@@ -1,12 +1,11 @@
 import { Link } from "@tanstack/react-router";
 import { Lock, Users } from "lucide-react";
 import type { DBRoom } from "@/lib/rooms";
-import { BANNER_PRESETS } from "@/lib/rooms";
-
-const fallback = BANNER_PRESETS[0].url;
+import { resolveBanner } from "@/lib/rooms";
 
 export function RoomCard({ room, large }: { room: DBRoom; large?: boolean }) {
-  const banner = room.banner || fallback;
+  const bannerUrl = resolveBanner(room.banner);
+
   return (
     <Link
       to="/rooms/$roomId"
@@ -15,7 +14,21 @@ export function RoomCard({ room, large }: { room: DBRoom; large?: boolean }) {
         large ? "h-56" : "h-52"
       }`}
     >
-      <img src={banner} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
+      <img
+        src={bannerUrl}
+        alt=""
+        loading="lazy"
+        className="absolute inset-0 h-full w-full object-cover"
+        onError={(e) => {
+          const target = e.currentTarget;
+          // cycle through presets until one loads
+          import("@/lib/rooms").then(({ BANNER_PRESETS }) => {
+            const idx = BANNER_PRESETS.findIndex((b) => b.url === target.src);
+            const next = BANNER_PRESETS[(idx + 1) % BANNER_PRESETS.length];
+            if (next.url !== target.src) target.src = next.url;
+          });
+        }}
+      />
       <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-black/10" />
       {room.privacy === "private" && (
         <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-black/60 text-[10px] font-bold flex items-center gap-1">

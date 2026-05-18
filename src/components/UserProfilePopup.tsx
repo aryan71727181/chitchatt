@@ -1,9 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
-import { defaultAvatar, defaultCover } from "@/lib/auth";
+import { defaultAvatar, defaultCover, useAuth } from "@/lib/auth";
 import { sidFromUserId } from "@/lib/rooms";
 import type { DBMember } from "@/lib/rooms";
-import { X, UserPlus, MessageCircle, Sparkles, Crown, Shield, Star, User } from "lucide-react";
+import { toggleFollow, checkFollowing } from "@/lib/follows";
+import { getOrCreateDmRoom } from "@/lib/dm";
+import {
+  X, UserPlus, UserCheck, MessageCircle, Sparkles,
+  Shield, Star, User, Loader2,
+} from "lucide-react";
+import { toast } from "sonner";
 
 type Profile = {
   id: string;
@@ -25,7 +32,6 @@ const ROLE_META: Record<string, { icon: string; label: string; color: string; bg
 };
 
 const MOODS = ["✨ Vibing", "🔥 Lit", "😴 Chill", "💬 Chatty", "🎵 Musical", "😂 Hyped"];
-
 function moodForId(id: string) {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
@@ -53,20 +59,69 @@ export function UserProfilePopup({
   onDemote?: () => void;
   currentUserRole?: string;
 }) {
+  const { user, profile: myProfile } = useAuth();
+  const navigate = useNavigate();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [following, setFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
+  const [msgLoading, setMsgLoading] = useState(false);
+  const [followerCount, setFollowerCount] = useState(0);
 
   useEffect(() => {
+    let alive = true;
     (async () => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("id, username, bio, profile_image, cover_image, followers, following, vibe_score, created_at")
-        .eq("id", member.user_id)
-        .maybeSingle();
+      const [{ data }, isF] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("id, username, bio, profile_image, cover_image, followers, following, vibe_score, created_at")
+          .eq("id", member.user_id)
+          .maybeSingle(),
+        !isCurrentUser && user ? checkFollowing(member.user_id) : Promise.resolve(false),
+      ]);
+      if (!alive) return;
       setProfile(data as Profile | null);
+      setFollowerCount((data as Profile | null)?.followers ?? 0);
+      setFollowing(!!isF);
       setLoading(false);
     })();
-  }, [member.user_id]);
+    return () => { alive = false; };
+  }, [member.user_id, isCurrentUser, user]);
+
+  const handleFollow = useCallback(async () => {
+    if (!user) return;
+    setFollowLoading(true);
+    const { following: nowFollowing, error } = await toggleFollow(user.id, member.user_id);
+    if (error) {
+      toast.error(error);
+    } else {
+      setFollowing(nowFollowing);
+      setFollowerCount((n) => n + (nowFollowing ? 1 : -1));
+      toast.success(nowFollowing ? `Following @${member.username}` : `Unfollowed @${member.username}`);
+    }
+    setFollowLoading(false);
+  }, [user, member.user_id, member.username]);
+
+  const handleMessage = useCallback(async () => {
+    if (!user || !myProfile) return;
+    setMsgLoading(true);
+    const roomId = await getOrCreateDmRoom(
+      user.id,
+      myProfile.username,
+      member.user_id,
+      member.username,
+    );
+    setMsgLoading(false);
+    if (!roomId) {
+      toast.error("Could not open chat");
+      return;
+    }
+    onClose();
+    navigate({
+      to: "/messages",
+      search: { with: member.user_id, name: member.username },
+    });
+  }, [user, myProfile, member, navigate, onClose]);
 
   const sid = sidFromUserId(member.user_id);
   const meta = ROLE_META[member.role] ?? ROLE_META.member;
@@ -84,41 +139,49 @@ export function UserProfilePopup({
 
   return (
     <div
-      className="fixed inset-0 z-[90] bg-black/75 backdrop-blur-md flex items-end justify-center animate-fade-up"
+      className="fixed inset-0 z-[90] bg-black/80 backdrop-blur-md flex items-end justify-center"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md glass-strong rounded-t-3xl overflow-hidden shadow-card"
+        className="w-full max-w-md glass-strong rounded-t-3xl overflow-hidden shadow-card animate-fade-up"
         style={{ maxHeight: "92vh" }}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Handle */}
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 h-1 w-10 rounded-full bg-white/20 z-10" />
+
         {/* Cover */}
-        <div className="relative h-28 flex-shrink-0">
-          <img src={cover} alt="" className="h-full w-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+        <div className="relative h-32 flex-shrink-0">
+          <img
+            src={cover}
+            alt=""
+            className="h-full w-full object-cover"
+            onError={(e) => { e.currentTarget.src = defaultCover(member.user_id); }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
           <button
             onClick={onClose}
             className="absolute top-3 right-3 h-8 w-8 rounded-full bg-black/50 backdrop-blur grid place-items-center"
           >
             <X className="h-3.5 w-3.5" />
           </button>
-          {/* Handle */}
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 h-1 w-10 rounded-full bg-white/30" />
         </div>
 
-        {/* Avatar + info */}
-        <div className="px-5 pb-5 overflow-y-auto no-scrollbar" style={{ maxHeight: "calc(92vh - 7rem)" }}>
-          <div className="flex items-end gap-3 -mt-10 mb-4">
+        {/* Scrollable body */}
+        <div className="px-5 pb-6 overflow-y-auto no-scrollbar" style={{ maxHeight: "calc(92vh - 8rem)" }}>
+          {/* Avatar row */}
+          <div className="flex items-end gap-3 -mt-12 mb-4">
             <div className="relative">
               <img
                 src={avatar}
                 alt=""
                 className="h-20 w-20 rounded-2xl object-cover ring-4 ring-background shadow-card"
+                onError={(e) => { e.currentTarget.src = defaultAvatar(member.username); }}
               />
               <span className="absolute bottom-1 right-1 h-3.5 w-3.5 rounded-full bg-green-400 ring-2 ring-background" />
             </div>
-            <div className="pb-1 flex-1 min-w-0">
-              <h2 className="font-bold text-lg leading-tight truncate">{member.username}</h2>
+            <div className="pb-2 flex-1 min-w-0">
+              <h2 className="font-bold text-lg leading-tight truncate">@{member.username}</h2>
               <p className="text-[11px] text-muted-foreground font-mono mt-0.5">SID: {sid}</p>
             </div>
           </div>
@@ -132,22 +195,20 @@ export function UserProfilePopup({
           {/* Bio */}
           {loading ? (
             <div className="h-4 w-3/4 rounded-full bg-white/10 animate-pulse mb-3" />
-          ) : (
-            profile?.bio && (
-              <p className="text-sm text-white/80 leading-relaxed mb-3">{profile.bio}</p>
-            )
-          )}
+          ) : profile?.bio ? (
+            <p className="text-sm text-white/80 leading-relaxed mb-3">{profile.bio}</p>
+          ) : null}
 
-          {/* Mood */}
+          {/* Mood chip */}
           <div className="glass rounded-2xl px-4 py-2.5 mb-3 flex items-center gap-2">
             <Sparkles className="h-3.5 w-3.5 text-electric flex-shrink-0" />
             <span className="text-sm">{mood}</span>
           </div>
 
-          {/* Stats row */}
+          {/* Stats */}
           <div className="grid grid-cols-3 gap-2 mb-4">
             {[
-              { label: "Followers", value: loading ? "…" : (profile?.followers ?? 0).toLocaleString() },
+              { label: "Followers", value: loading ? "…" : followerCount.toLocaleString() },
               { label: "Following", value: loading ? "…" : (profile?.following ?? 0).toLocaleString() },
               { label: "Vibe", value: loading ? "…" : `${profile?.vibe_score ?? 0}` },
             ].map((s) => (
@@ -158,24 +219,46 @@ export function UserProfilePopup({
             ))}
           </div>
 
-          {/* Join date */}
           {joinDate && (
-            <p className="text-[11px] text-muted-foreground mb-4">
-              Joined ChitChat · {joinDate}
-            </p>
+            <p className="text-[11px] text-muted-foreground mb-4">Joined ChitChat · {joinDate}</p>
           )}
 
           {/* Action buttons */}
           {!isCurrentUser && (
             <div className="grid grid-cols-3 gap-2 mb-4">
-              <button className="h-11 rounded-2xl gradient-electric text-white text-xs font-semibold flex items-center justify-center gap-1.5 shadow-glow-soft active:scale-95">
-                <UserPlus className="h-3.5 w-3.5" />
-                Follow
+              {/* Follow button */}
+              <button
+                onClick={handleFollow}
+                disabled={followLoading}
+                className={`h-11 rounded-2xl text-xs font-semibold flex items-center justify-center gap-1.5 active:scale-95 transition-all ${
+                  following
+                    ? "glass border border-electric/40 text-electric"
+                    : "gradient-electric text-white shadow-glow-soft"
+                } disabled:opacity-60`}
+              >
+                {followLoading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : following ? (
+                  <><UserCheck className="h-3.5 w-3.5" /> Following</>
+                ) : (
+                  <><UserPlus className="h-3.5 w-3.5" /> Follow</>
+                )}
               </button>
-              <button className="h-11 rounded-2xl glass text-xs font-semibold flex items-center justify-center gap-1.5 active:scale-95">
-                <MessageCircle className="h-3.5 w-3.5" />
-                Message
+
+              {/* Message button */}
+              <button
+                onClick={handleMessage}
+                disabled={msgLoading}
+                className="h-11 rounded-2xl glass text-xs font-semibold flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-60"
+              >
+                {msgLoading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <><MessageCircle className="h-3.5 w-3.5" /> Message</>
+                )}
               </button>
+
+              {/* Invite chip */}
               <button className="h-11 rounded-2xl glass text-xs font-semibold flex items-center justify-center gap-1.5 active:scale-95">
                 <Sparkles className="h-3.5 w-3.5 text-electric" />
                 Invite
@@ -183,7 +266,7 @@ export function UserProfilePopup({
             </div>
           )}
 
-          {/* Moderation (only for mods on non-owner members) */}
+          {/* Moderation controls */}
           {canShowMod && (
             <div className="border-t border-white/8 pt-4">
               <p className="text-[11px] text-muted-foreground mb-2 font-semibold uppercase tracking-wider">Moderation</p>
@@ -222,7 +305,8 @@ export function UserProfilePopup({
                     )}
                   </>
                 )}
-                {(isViewer_owner || isViewer_coowner) && onDemote && (member.role === "admin" || (isViewer_owner && member.role === "co_owner")) && (
+                {(isViewer_owner || isViewer_coowner) && onDemote &&
+                  (member.role === "admin" || (isViewer_owner && member.role === "co_owner")) && (
                   <button
                     onClick={() => { onDemote(); onClose(); }}
                     className="h-10 rounded-xl glass text-xs font-medium text-muted-foreground active:scale-95 flex items-center justify-center gap-1.5"

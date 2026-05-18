@@ -20,13 +20,26 @@ export const CATEGORIES = [
 export type Category = (typeof CATEGORIES)[number];
 
 export const BANNER_PRESETS: { id: string; label: string; url: string }[] = [
-  { id: "late", label: "Midnight", url: bLate },
-  { id: "anime", label: "Anime", url: bAnime },
-  { id: "heart", label: "Heart", url: bHeart },
-  { id: "game", label: "Gaming", url: bGame },
-  { id: "chill", label: "Chill", url: bChill },
-  { id: "funny", label: "Funny", url: bFunny },
+  { id: "late",  label: "Midnight",  url: bLate  },
+  { id: "anime", label: "Anime",     url: bAnime },
+  { id: "heart", label: "Heart",     url: bHeart },
+  { id: "game",  label: "Gaming",    url: bGame  },
+  { id: "chill", label: "Chill",     url: bChill },
+  { id: "funny", label: "Funny",     url: bFunny },
 ];
+
+const BANNER_ID_MAP: Record<string, string> = Object.fromEntries(
+  BANNER_PRESETS.map((b) => [b.id, b.url])
+);
+
+/** Resolve a stored banner value (preset ID or raw URL) to a displayable URL */
+export function resolveBanner(banner: string | null | undefined): string {
+  if (!banner) return BANNER_PRESETS[0].url;
+  // Known preset ID
+  if (BANNER_ID_MAP[banner]) return BANNER_ID_MAP[banner];
+  // External / legacy Vite-hash URL – return as-is
+  return banner;
+}
 
 export type DBRoom = {
   id: string;
@@ -87,4 +100,13 @@ export function sidFromUserId(uid: string): string {
   let h = 0;
   for (let i = 0; i < uid.length; i++) h = (h * 31 + uid.charCodeAt(i)) >>> 0;
   return "CHT" + String(h % 1000000).padStart(6, "0");
+}
+
+/** Get a stable DM conversation ID for two users (order-independent) */
+export function dmConversationId(userIdA: string, userIdB: string): string {
+  const [a, b] = [userIdA, userIdB].sort();
+  let h = 5381;
+  const key = `${a}__${b}`;
+  for (let i = 0; i < key.length; i++) h = ((h << 5) + h + key.charCodeAt(i)) >>> 0;
+  return "dm_" + h.toString(16).padStart(8, "0");
 }
