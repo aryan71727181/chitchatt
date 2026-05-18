@@ -457,11 +457,12 @@ function RoomPage() {
 
   const owner = seats.find((s) => s.seat_index === 0);
   const rest = seats.filter((s) => s.seat_index !== 0).sort((a, b) => a.seat_index - b.seat_index);
+  const roomCode = room.id.slice(0, 6).toUpperCase();
 
   return (
     <AppShell hideNav>
       {/* Top bar */}
-      <header className="px-4 pt-12 pb-3 flex items-center gap-2.5 animate-fade-up">
+      <header className="px-4 pt-12 pb-3 flex items-start gap-2.5 animate-fade-up">
         <button
           onClick={() => setConfirmLeave(true)}
           className="h-10 w-10 rounded-full glass grid place-items-center active:scale-95"
@@ -470,11 +471,15 @@ function RoomPage() {
           <ArrowLeft className="h-4 w-4" />
         </button>
         <div className="flex-1 min-w-0">
-          <h1 className="font-bold text-base leading-tight truncate">{room.name}</h1>
-          <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-[oklch(0.7_0.2_150)] animate-pulse" />
-            <Users className="h-3 w-3" /> {members.length} Vibing · {room.category}
-          </p>
+          <h1 className="font-bold text-[1.1rem] leading-tight truncate">{room.name}</h1>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+            <span className="glass rounded-full px-3 py-1">ID: {roomCode}</span>
+            <span className="glass rounded-full px-3 py-1 text-electric">{room.category}</span>
+            <span className="glass rounded-full px-3 py-1 flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-[oklch(0.7_0.2_150)] animate-pulse" />
+              <Users className="h-3 w-3" /> {members.length} Members
+            </span>
+          </div>
         </div>
         {isMod && (
           <button
@@ -487,13 +492,17 @@ function RoomPage() {
       </header>
 
       {/* Stage */}
-      <section className="relative px-5 mt-3">
-        <div className="relative glass-strong rounded-3xl p-6 shadow-card overflow-hidden">
-          <div className="absolute -top-20 -left-10 h-48 w-48 rounded-full bg-electric/30 blur-3xl" />
-          <div className="absolute -bottom-20 -right-10 h-48 w-48 rounded-full bg-[oklch(0.6_0.28_295)]/25 blur-3xl" />
+      <section className="relative px-4 mt-3">
+        <div className="relative rounded-[2rem] border border-white/8 bg-[linear-gradient(180deg,oklch(0.15_0.03_270/.92),oklch(0.1_0.025_270/.98))] px-4 pt-6 pb-7 shadow-card overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-28 bg-[radial-gradient(circle_at_top,oklch(0.62_0.26_255/.28),transparent_72%)]" />
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute left-1/2 top-[7.4rem] h-[11rem] w-[18rem] -translate-x-1/2 rounded-[50%] border border-electric/16" />
+            <div className="absolute left-1/2 top-[8.9rem] h-[14rem] w-[21rem] -translate-x-1/2 rounded-[50%] border border-electric/12" />
+            <div className="absolute left-1/2 top-[10.5rem] h-[17rem] w-[24rem] -translate-x-1/2 rounded-[50%] border border-electric/8" />
+          </div>
 
           {/* Owner seat */}
-          <div className="relative flex justify-center mb-6">
+          <div className="relative flex justify-center mb-7">
             {owner && (
               <SeatView
                 seat={owner}
@@ -507,7 +516,7 @@ function RoomPage() {
             )}
           </div>
 
-          <div className="relative grid grid-cols-3 gap-y-5 gap-x-2 place-items-center">
+          <div className="relative grid grid-cols-3 gap-y-6 gap-x-2 place-items-start">
             {rest.map((s) => (
               <SeatView
                 key={s.seat_index}
