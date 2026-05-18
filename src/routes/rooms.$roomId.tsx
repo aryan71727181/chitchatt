@@ -16,12 +16,13 @@ import {
   MoreVertical,
   Shield,
   UserMinus,
-  Trash2,
   Eye,
   VolumeX,
   Volume2,
   BellRing,
   Menu,
+  Share2,
+  Trash2,
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { supabase } from "@/integrations/supabase/client";
@@ -33,8 +34,10 @@ import {
   type DBSeat,
   type DBMember,
   type DBMessage,
+  type DBBan,
   uidFromUserId,
   resolveBanner,
+  ROLE_META,
 } from "@/lib/rooms";
 import { toast } from "sonner";
 import { MembersSheet } from "@/components/MembersSheet";
@@ -51,6 +54,11 @@ const GIFTS = [
   { name: "Heart",  emoji: "💖" },
   { name: "Mic",    emoji: "🎤" },
   { name: "Crown",  emoji: "👑" },
+  { name: "Fire",   emoji: "🔥" },
+  { name: "Star",   emoji: "⭐" },
+  { name: "Cake",   emoji: "🎂" },
+  { name: "Wave",   emoji: "👋" },
+  { name: "Clap",   emoji: "👏" },
 ];
 
 function RoomPage() {
@@ -63,12 +71,13 @@ function RoomPage() {
   const [seats, setSeats]       = useState<DBSeat[]>([]);
   const [members, setMembers]   = useState<DBMember[]>([]);
   const [messages, setMessages] = useState<DBMessage[]>([]);
+  const [bannedIds, setBannedIds] = useState<Set<string>>(new Set());
   const [joined, setJoined]     = useState(false);
   const [needsPassword, setNeedsPassword] = useState(false);
   const [pwInput, setPwInput]   = useState("");
   const [text, setText]         = useState("");
-  const [showGifts, setShowGifts]     = useState(false);
-  const [showMembers, setShowMembers] = useState(false);
+  const [showGifts, setShowGifts]       = useState(false);
+  const [showMembers, setShowMembers]   = useState(false);
   const [showRoomInfo, setShowRoomInfo] = useState(false);
   const [selectedMember, setSelectedMember] = useState<DBMember | null>(null);
   const [floatGift, setFloatGift]   = useState<string | null>(null);
@@ -80,6 +89,7 @@ function RoomPage() {
 
   const prevMemberIds = useRef<Set<string>>(new Set());
   const chatEnd       = useRef<HTMLDivElement>(null);
+  const didShowWelcome = useRef(false);
 
   const meMember = useMemo(
     () => members.find((m) => m.user_id === user?.id),
@@ -92,11 +102,11 @@ function RoomPage() {
   const isOwner = meMember?.role === "owner";
   const isMod   = meMember && ["owner", "co_owner", "admin"].includes(meMember.role);
 
-  const clientRef   = useRef<any>(null);
+  const clientRef     = useRef<any>(null);
   const localTrackRef = useRef<any>(null);
-  const micPermRef  = useRef<MediaStream | null>(null);
+  const micPermRef    = useRef<MediaStream | null>(null);
 
-  // ── Load room + privacy check ──────────────────────────────────────────
+  // ── Load room + privacy + ban check ───────────────────────────────────────
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -105,6 +115,11 @@ function RoomPage() {
       if (error || !data) { toast.error("Room not found"); navigate({ to: "/rooms" }); return; }
       setRoom(data as DBRoom);
       if (user) {
+        // Check if banned
+        const { data: ban } = await (supabase as any)
+          .from("room_bans").select("user_id").eq("room_id", roomId).eq("user_id", user.id).maybeSingle();
+        if (ban) { toast.error("You are banned from this room"); navigate({ to: "/rooms" }); return; }
+
         const { data: m } = await supabase
           .from("room_members").select("*")
           .eq("room_id", roomId).eq("user_id", user.id).maybeSingle();
@@ -121,17 +136,27 @@ function RoomPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, user?.id]);
 
-  // ── Load + subscribe seats / members / messages ────────────────────────
+  // Welcome message on join
+  useEffect(() => {
+    if (joined && room?.welcome_message && !didShowWelcome.current) {
+      didShowWelcome.current = true;
+      setTimeout(() => toast(room.welcome_message!, { icon: "👋", duration: 5000 }), 800);
+    }
+  }, [joined, room?.welcome_message]);
+
+  // ── Load + subscribe seats / members / messages / bans ─────────────────────
   useEffect(() => {
     if (!roomId) return;
     const loadAll = async () => {
-      const [{ data: s }, { data: mb }, { data: ms }] = await Promise.all([
+      const [{ data: s }, { data: mb }, { data: ms }, { data: bns }] = await Promise.all([
         supabase.from("room_seats").select("*").eq("room_id", roomId).order("seat_index"),
         supabase.from("room_members").select("*").eq("room_id", roomId),
         supabase.from("room_messages").select("*").eq("room_id", roomId)
           .order("created_at", { ascending: true }).limit(80),
+        (supabase as any).from("room_bans").select("user_id").eq("room_id", roomId),
       ]);
       setSeats((s ?? []) as DBSeat[]);
+      setBannedIds(new Set(((bns ?? []) as Array<{ user_id: string }>).map((b) => b.user_id)));
       const newMembers = (mb ?? []) as DBMember[];
       setMembers((prev) => {
         const prevIds = prevMemberIds.current;
@@ -153,6 +178,21 @@ function RoomPage() {
       .on("postgres_changes", { event: "*", schema: "public", table: "room_members", filter: `room_id=eq.${roomId}` }, () => loadAll())
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "room_messages", filter: `room_id=eq.${roomId}` }, (payload) => {
         setMessages((prev) => [...prev, payload.new as DBMessage].slice(-200));
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "room_bans", filter: `room_id=eq.${roomId}` }, (payload) => {
+        if (payload.eventType === "INSERT") {
+          const ban = payload.new as DBBan;
+          setBannedIds((prev) => new Set([...prev, ban.user_id]));
+          // Kick banned user from room (they'll be redirected on next load)
+          if (ban.user_id === user?.id) {
+            toast.error("You have been banned from this room");
+            navigate({ to: "/rooms" });
+          }
+        }
+        if (payload.eventType === "DELETE") {
+          const ban = payload.old as Partial<DBBan>;
+          if (ban.user_id) setBannedIds((prev) => { const s = new Set(prev); s.delete(ban.user_id!); return s; });
+        }
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "rooms", filter: `id=eq.${roomId}` }, (payload) => {
         setRoom(payload.new as DBRoom);
@@ -179,7 +219,7 @@ function RoomPage() {
     }
   }, [members, joined, user, navigate]);
 
-  // ── Agora voice ────────────────────────────────────────────────────────
+  // ── Agora voice ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!joined || !user || !room) return;
     let cancelled = false;
@@ -225,7 +265,7 @@ function RoomPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [joined, room?.id, !!mySeat, user?.id]);
 
-  // ── Actions ────────────────────────────────────────────────────────────
+  // ── Actions ─────────────────────────────────────────────────────────────────
   const joinRoom = async (pw?: string, targetRoom: DBRoom | null = room) => {
     if (!user || !profile || !targetRoom) return;
     if (targetRoom.privacy === "private" && targetRoom.password_hash && pw !== targetRoom.password_hash) {
@@ -255,6 +295,10 @@ function RoomPage() {
     if (seat.user_id) return;
     if (seat.locked) return toast("Seat is locked");
     if (mySeat?.seat_index === seat.seat_index) return;
+    // Access: check seat_mode (basic enforcement — admin_approval blocks self-take)
+    if (room?.seat_mode === "admin_approval") {
+      return toast("This room requires admin approval to take a seat");
+    }
     if (!joined) await joinRoom(undefined, room);
     try {
       if (!micPermRef.current) {
@@ -272,15 +316,17 @@ function RoomPage() {
         .eq("room_id", roomId).eq("seat_index", mySeat.seat_index);
       if (clearError) { toast.error(clearError.message); return; }
     }
+    const muted = room?.mic_mode === "locked" || room?.mic_mode === "host_approval";
     const { error } = await supabase.from("room_seats")
       .update({
         user_id: user.id, username: profile.username,
         avatar: profile.profile_image ?? defaultAvatar(profile.username),
-        joined_at: new Date().toISOString(), muted: false,
+        joined_at: new Date().toISOString(), muted,
       })
       .eq("room_id", roomId).eq("seat_index", seat.seat_index);
     if (error) { toast.error(error.message); return; }
     toast.success(seat.seat_index === 0 ? "You took the host seat" : "Seat joined");
+    if (muted && room?.mic_mode === "host_approval") toast("Mic off — waiting for host approval");
   };
 
   const leaveSeat = async () => {
@@ -304,6 +350,7 @@ function RoomPage() {
 
   const sendMsg = async () => {
     if (!text.trim() || !user || !profile) return;
+    if (room?.allow_chat === false) return toast("Chat is disabled in this room");
     const body = text.trim(); setText("");
     await supabase.from("room_messages").insert({
       room_id: roomId, user_id: user.id, username: profile.username,
@@ -314,6 +361,7 @@ function RoomPage() {
 
   const sendGift = async (emoji: string) => {
     if (!user || !profile) return;
+    if (room?.allow_gifts === false) return toast("Gifts are disabled in this room");
     setShowGifts(false); setFloatGift(emoji);
     setTimeout(() => setFloatGift(null), 2000);
     await supabase.from("room_messages").insert({
@@ -323,43 +371,52 @@ function RoomPage() {
     });
   };
 
-  // Mod actions
-  const kickSeat      = async (seat: DBSeat) => {
+  const shareRoom = () => {
+    const url = window.location.href;
+    if (navigator.share) {
+      navigator.share({ title: room?.name ?? "ChitChat Room", url }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(url).then(() => toast.success("Room link copied!"));
+    }
+  };
+
+  // ── Mod actions ──────────────────────────────────────────────────────────────
+  const kickSeat     = async (seat: DBSeat) => {
     await supabase.from("room_seats")
       .update({ user_id: null, username: null, avatar: null, joined_at: null, muted: false })
       .eq("room_id", roomId).eq("seat_index", seat.seat_index);
     setActingOn(null);
   };
-  const muteSeat      = async (seat: DBSeat) => {
+  const muteSeat     = async (seat: DBSeat) => {
     await supabase.from("room_seats").update({ muted: !seat.muted })
       .eq("room_id", roomId).eq("seat_index", seat.seat_index);
     setActingOn(null);
   };
-  const lockSeat      = async (seat: DBSeat) => {
+  const lockSeat     = async (seat: DBSeat) => {
     await supabase.from("room_seats").update({ locked: !seat.locked })
       .eq("room_id", roomId).eq("seat_index", seat.seat_index);
     setActingOn(null);
   };
-  const kickFromRoom  = async (seat: DBSeat) => {
+  const kickFromRoom = async (seat: DBSeat) => {
     if (!seat.user_id) return;
     await kickSeat(seat);
     await supabase.from("room_members").delete().eq("room_id", roomId).eq("user_id", seat.user_id);
     setActingOn(null);
   };
-  const promote       = async (seat: DBSeat, role: "co_owner" | "admin") => {
+  const promote      = async (seat: DBSeat, role: "co_owner" | "admin") => {
     if (!seat.user_id) return;
     await supabase.from("room_members").update({ role }).eq("room_id", roomId).eq("user_id", seat.user_id);
     toast.success(`Promoted to ${role.replace("_", "-")}`);
     setActingOn(null);
   };
-  const muteAll       = async () => {
+  const muteAll      = async () => {
     const occ = seats.filter((s) => s.user_id && s.user_id !== user?.id);
     await Promise.all(occ.map((s) =>
       supabase.from("room_seats").update({ muted: true }).eq("room_id", roomId).eq("seat_index", s.seat_index)
     ));
     toast.success("All users muted");
   };
-  const deleteRoom    = async () => {
+  const deleteRoom   = async () => {
     if (!isOwner) return;
     await supabase.from("rooms").delete().eq("id", roomId);
     navigate({ to: "/rooms" });
@@ -377,13 +434,42 @@ function RoomPage() {
     const seat = getMemberSeat(member.user_id);
     if (seat) muteSeat(seat); else toast("User is not on a seat");
   };
-  const handleMemberPromote = async (member: DBMember, role: "co_owner" | "admin") => {
+  const handleMemberPromote = async (member: DBMember, role: "co_owner" | "admin" | "vip") => {
     await supabase.from("room_members").update({ role }).eq("room_id", roomId).eq("user_id", member.user_id);
-    toast.success(`Promoted to ${role.replace("_", "-")}`);
+    const meta = ROLE_META[role];
+    toast.success(`Promoted to ${meta?.label ?? role}`);
   };
   const handleMemberDemote  = async (member: DBMember) => {
     await supabase.from("room_members").update({ role: "member" }).eq("room_id", roomId).eq("user_id", member.user_id);
     toast.success(`${member.username} role removed`);
+  };
+  const handleBanUser = async (member: DBMember, reason?: string) => {
+    if (!user) return;
+    // Remove from room first
+    const seat = getMemberSeat(member.user_id);
+    if (seat) await kickSeat(seat);
+    await supabase.from("room_members").delete().eq("room_id", roomId).eq("user_id", member.user_id);
+    // Insert ban record
+    const { error } = await (supabase as any).from("room_bans").insert({
+      room_id: roomId, user_id: member.user_id, banned_by: user.id,
+      reason: reason ?? null,
+    });
+    if (error) { toast.error(error.message); return; }
+    toast.success(`@${member.username} banned from room`);
+  };
+  const handleInviteToSeat = async (member: DBMember, seatIndex: number) => {
+    if (!profile) return;
+    // Place the user in the seat (admin action — bypasses seat_mode)
+    const { error } = await supabase.from("room_seats")
+      .update({
+        user_id: member.user_id, username: member.username,
+        avatar: member.avatar,
+        joined_at: new Date().toISOString(),
+        muted: room?.mic_mode === "locked",
+      })
+      .eq("room_id", roomId).eq("seat_index", seatIndex);
+    if (error) { toast.error(error.message); return; }
+    toast.success(`@${member.username} invited to seat ${seatIndex === 0 ? "(host)" : seatIndex}`);
   };
 
   const openProfileForUserId = (userId: string) => {
@@ -391,7 +477,7 @@ function RoomPage() {
     if (member) setSelectedMember(member);
   };
 
-  // ── Render gates ───────────────────────────────────────────────────────
+  // ── Render gates ────────────────────────────────────────────────────────────
   if (!room) {
     return (
       <AppShell>
@@ -427,9 +513,10 @@ function RoomPage() {
     );
   }
 
-  const hostSeat = seats.find((s) => s.seat_index === 0);
+  const hostSeat  = seats.find((s) => s.seat_index === 0);
   const restSeats = seats.filter((s) => s.seat_index !== 0).sort((a, b) => a.seat_index - b.seat_index);
   const bannerUrl = resolveBanner(room.banner);
+  const giftsEnabled = room.allow_gifts !== false;
 
   return (
     <AppShell hideNav>
@@ -446,7 +533,7 @@ function RoomPage() {
       {/* Top bar */}
       <header className="px-4 pt-12 pb-3 flex items-start gap-2.5 animate-fade-up">
         <button onClick={() => setConfirmLeave(true)}
-          className="h-10 w-10 rounded-full glass grid place-items-center active:scale-95" aria-label="Back">
+          className="h-10 w-10 rounded-full glass grid place-items-center active:scale-95 flex-shrink-0" aria-label="Back">
           <ArrowLeft className="h-4 w-4" />
         </button>
         <div className="flex-1 min-w-0">
@@ -459,7 +546,7 @@ function RoomPage() {
             >
               <Eye className="h-3 w-3 text-electric" />
               <span className="text-electric font-semibold">{members.length}</span>
-              <span>Members</span>
+              <span>Online</span>
             </button>
             <span className="glass rounded-full px-2.5 py-1 flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-[oklch(0.7_0.2_150)] animate-pulse" />
@@ -467,7 +554,14 @@ function RoomPage() {
             </span>
           </div>
         </div>
-        <div className="flex gap-1.5">
+        <div className="flex gap-1.5 flex-shrink-0">
+          <button
+            onClick={shareRoom}
+            className="h-10 w-10 rounded-full glass grid place-items-center active:scale-95"
+            title="Share room"
+          >
+            <Share2 className="h-4 w-4 text-muted-foreground" />
+          </button>
           <button
             onClick={() => setShowRoomInfo(true)}
             className="h-10 w-10 rounded-full glass grid place-items-center active:scale-95"
@@ -596,7 +690,7 @@ function RoomPage() {
       </section>
 
       {/* Gift picker */}
-      {showGifts && (
+      {showGifts && giftsEnabled && (
         <div className="fixed bottom-36 left-0 right-0 z-40 px-5 animate-fade-up">
           <div className="mx-auto max-w-md glass-strong rounded-3xl p-4 shadow-card">
             <p className="text-sm font-bold mb-3">Send a Gift</p>
@@ -636,17 +730,20 @@ function RoomPage() {
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && sendMsg()}
-              placeholder="Say something nice…"
-              className="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              placeholder={room.allow_chat === false ? "Chat disabled" : "Say something nice…"}
+              disabled={room.allow_chat === false}
+              className="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:opacity-40"
             />
 
             {/* Gift */}
-            <button onClick={() => setShowGifts((s) => !s)}
-              className="h-9 w-9 rounded-full bg-[oklch(0.7_0.27_350)]/20 text-[oklch(0.8_0.2_350)] grid place-items-center active:scale-95 flex-shrink-0">
-              <Gift className="h-4 w-4" />
-            </button>
+            {giftsEnabled && (
+              <button onClick={() => setShowGifts((s) => !s)}
+                className="h-9 w-9 rounded-full bg-[oklch(0.7_0.27_350)]/20 text-[oklch(0.8_0.2_350)] grid place-items-center active:scale-95 flex-shrink-0">
+                <Gift className="h-4 w-4" />
+              </button>
+            )}
 
-            {/* ☰ Room Info — key feature button */}
+            {/* ☰ Room Info */}
             <button
               onClick={() => setShowRoomInfo(true)}
               className="h-9 w-9 rounded-full glass grid place-items-center active:scale-95 flex-shrink-0"
@@ -713,6 +810,7 @@ function RoomPage() {
       {showMembers && (
         <MembersSheet
           members={members}
+          seats={seats}
           onClose={() => setShowMembers(false)}
           currentUserId={user?.id}
           onSelectUser={(member) => { setShowMembers(false); setSelectedMember(member); }}
@@ -727,17 +825,25 @@ function RoomPage() {
           isCurrentUser={selectedMember.user_id === user?.id}
           canModerate={!!isMod}
           currentUserRole={meMember?.role}
-          onKick={isMod && selectedMember.role !== "owner" ? () => handleMemberKick(selectedMember) : undefined}
-          onMute={isMod && selectedMember.role !== "owner" ? () => handleMemberMute(selectedMember) : undefined}
-          onPromote={(isOwner || meMember?.role === "co_owner") && selectedMember.role === "member"
+          availableSeats={seats}
+          onKick={isMod && selectedMember.role !== "owner"
+            ? () => handleMemberKick(selectedMember) : undefined}
+          onMute={isMod && selectedMember.role !== "owner"
+            ? () => handleMemberMute(selectedMember) : undefined}
+          onPromote={(isOwner || meMember?.role === "co_owner") && selectedMember.role !== "owner" && selectedMember.role !== "co_owner"
             ? (role) => handleMemberPromote(selectedMember, role) : undefined}
           onDemote={(isOwner || meMember?.role === "co_owner") &&
-            (selectedMember.role === "admin" || (isOwner && selectedMember.role === "co_owner"))
+            (selectedMember.role === "admin" || selectedMember.role === "vip" ||
+              (isOwner && selectedMember.role === "co_owner"))
             ? () => handleMemberDemote(selectedMember) : undefined}
+          onBan={(isOwner || meMember?.role === "co_owner") && selectedMember.role !== "owner"
+            ? (reason) => handleBanUser(selectedMember, reason) : undefined}
+          onInviteToSeat={isMod
+            ? (seatIndex) => handleInviteToSeat(selectedMember, seatIndex) : undefined}
         />
       )}
 
-      {/* Room info panel — opened from ☰ button */}
+      {/* Room info panel */}
       {showRoomInfo && (
         <RoomInfoPanel
           room={room}
@@ -745,6 +851,7 @@ function RoomPage() {
           memberCount={members.length}
           isMod={!!isMod}
           isOwner={isOwner}
+          currentUserRole={meMember?.role}
           onClose={() => setShowRoomInfo(false)}
           onDelete={deleteRoom}
           onMuteAll={muteAll}
@@ -774,7 +881,7 @@ function RoomPage() {
   );
 }
 
-// ── Sub-components ─────────────────────────────────────────────────────────────
+// ── Sub-components ──────────────────────────────────────────────────────────────
 
 function ModBtn({ icon: Icon, label, onClick, danger }: {
   icon: any; label: string; onClick: () => void; danger?: boolean;
@@ -842,7 +949,6 @@ function SeatView({
     <div className="flex flex-col items-center gap-1.5">
       <div className="relative">
         {speaking && <span className="absolute -inset-1.5 rounded-full animate-pulse-ring" />}
-        {/* Avatar / icon — tappable for profile */}
         <button
           onClick={isMe ? onSelf : (onProfile ?? onModerate)}
           className={`relative ${size} rounded-full p-[3px] ${
@@ -859,21 +965,18 @@ function SeatView({
           )}
         </button>
 
-        {/* Crown badge for host */}
         {host && (
           <span className="absolute -top-2 left-1/2 h-8 w-8 -translate-x-1/2 rounded-full grid place-items-center bg-electric text-background shadow-glow-soft">
             <Crown className="h-4 w-4" />
           </span>
         )}
 
-        {/* Mic indicator */}
         <span className={`absolute bottom-0 right-0 h-6 w-6 rounded-full grid place-items-center ${
           seat.muted ? "bg-[oklch(0.36_0.18_20)]" : "bg-electric"
         } ring-2 ring-background`}>
           {seat.muted ? <MicOff className="h-2.5 w-2.5 text-muted-foreground" /> : <Mic className="h-2.5 w-2.5 text-white" />}
         </span>
 
-        {/* Mod ⋮ button */}
         {onModerate && !isMe && (
           <button
             onClick={(e) => { e.stopPropagation(); onModerate(); }}

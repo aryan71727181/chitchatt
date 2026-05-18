@@ -35,9 +35,7 @@ const BANNER_ID_MAP: Record<string, string> = Object.fromEntries(
 /** Resolve a stored banner value (preset ID or raw URL) to a displayable URL */
 export function resolveBanner(banner: string | null | undefined): string {
   if (!banner) return BANNER_PRESETS[0].url;
-  // Known preset ID
   if (BANNER_ID_MAP[banner]) return BANNER_ID_MAP[banner];
-  // External / legacy Vite-hash URL – return as-is
   return banner;
 }
 
@@ -54,6 +52,14 @@ export type DBRoom = {
   status: "active" | "closed";
   listener_count: number;
   created_at: string;
+  // Extended fields (migration 20260519000002)
+  welcome_message?: string | null;
+  allow_chat?: boolean;
+  allow_gifts?: boolean;
+  allow_music?: boolean;
+  join_mode?: "public" | "followers" | "owner_following" | "private";
+  seat_mode?: "everyone" | "followers" | "admin_approval";
+  mic_mode?: "open" | "host_approval" | "locked";
 };
 
 export type DBSeat = {
@@ -72,7 +78,7 @@ export type DBMember = {
   user_id: string;
   username: string;
   avatar: string | null;
-  role: "owner" | "co_owner" | "admin" | "member";
+  role: "owner" | "co_owner" | "admin" | "host" | "vip" | "member";
   joined_at: string;
 };
 
@@ -86,6 +92,23 @@ export type DBMessage = {
   kind: "text" | "gift";
   gift_emoji: string | null;
   created_at: string;
+};
+
+export type DBBan = {
+  room_id: string;
+  user_id: string;
+  banned_by: string;
+  reason: string | null;
+  created_at: string;
+};
+
+export const ROLE_META: Record<string, { icon: string; label: string; color: string; bg: string; order: number }> = {
+  owner:    { icon: "👑", label: "Host",      color: "text-yellow-400",  bg: "bg-yellow-400/15",  order: 0 },
+  co_owner: { icon: "⭐", label: "Co-owner",  color: "text-purple-300",  bg: "bg-purple-300/15",  order: 1 },
+  admin:    { icon: "🛡️", label: "Admin",     color: "text-blue-300",    bg: "bg-blue-300/15",    order: 2 },
+  host:     { icon: "🎤", label: "Host",      color: "text-pink-300",    bg: "bg-pink-300/15",    order: 3 },
+  vip:      { icon: "💎", label: "VIP",       color: "text-cyan-300",    bg: "bg-cyan-300/15",    order: 4 },
+  member:   { icon: "👤", label: "Listener",  color: "text-white/60",    bg: "bg-white/10",       order: 5 },
 };
 
 // stable numeric uid for Agora from auth user id

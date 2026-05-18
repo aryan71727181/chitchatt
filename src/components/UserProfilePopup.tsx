@@ -2,14 +2,14 @@ import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { defaultAvatar, defaultCover, useAuth } from "@/lib/auth";
-import { sidFromUserId } from "@/lib/rooms";
-import type { DBMember } from "@/lib/rooms";
+import { sidFromUserId, ROLE_META } from "@/lib/rooms";
+import type { DBMember, DBSeat } from "@/lib/rooms";
 import { toggleFollow, checkFollowing } from "@/lib/follows";
 import { getOrCreateDmRoom } from "@/lib/dm";
 import {
   X, UserPlus, UserCheck, MessageCircle, Sparkles,
   Shield, Star, User, Loader2, Settings2, ChevronDown, ChevronUp,
-  VolumeX, UserX, Crown,
+  VolumeX, UserX, Crown, Ban, Mic, Diamond,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -23,13 +23,6 @@ type Profile = {
   following: number;
   vibe_score: number;
   created_at: string;
-};
-
-const ROLE_META: Record<string, { icon: string; label: string; color: string; bg: string }> = {
-  owner:    { icon: "👑", label: "Host",     color: "text-yellow-400", bg: "bg-yellow-400/15" },
-  co_owner: { icon: "⭐", label: "Co-owner", color: "text-purple-300", bg: "bg-purple-300/15" },
-  admin:    { icon: "🛡️", label: "Admin",    color: "text-blue-300",   bg: "bg-blue-300/15"   },
-  member:   { icon: "👤", label: "Listener", color: "text-white/60",   bg: "bg-white/10"      },
 };
 
 const MOODS = ["✨ Vibing", "🔥 Lit", "😴 Chill", "💬 Chatty", "🎵 Musical", "😂 Hyped"];
@@ -48,7 +41,10 @@ export function UserProfilePopup({
   onMute,
   onPromote,
   onDemote,
+  onBan,
+  onInviteToSeat,
   currentUserRole,
+  availableSeats,
 }: {
   member: DBMember;
   onClose: () => void;
@@ -56,19 +52,25 @@ export function UserProfilePopup({
   canModerate: boolean;
   onKick?: () => void;
   onMute?: () => void;
-  onPromote?: (role: "co_owner" | "admin") => void;
+  onPromote?: (role: "co_owner" | "admin" | "vip") => void;
   onDemote?: () => void;
+  onBan?: (reason?: string) => void;
+  onInviteToSeat?: (seatIndex: number) => void;
   currentUserRole?: string;
+  availableSeats?: DBSeat[];
 }) {
   const { user, profile: myProfile } = useAuth();
   const navigate = useNavigate();
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [following, setFollowing] = useState(false);
-  const [followLoading, setFollowLoading] = useState(false);
-  const [msgLoading, setMsgLoading] = useState(false);
-  const [followerCount, setFollowerCount] = useState(0);
-  const [manageOpen, setManageOpen] = useState(false);
+  const [profile, setProfile]               = useState<Profile | null>(null);
+  const [loading, setLoading]               = useState(true);
+  const [following, setFollowing]           = useState(false);
+  const [followLoading, setFollowLoading]   = useState(false);
+  const [msgLoading, setMsgLoading]         = useState(false);
+  const [followerCount, setFollowerCount]   = useState(0);
+  const [manageOpen, setManageOpen]         = useState(false);
+  const [showInviteSeats, setShowInviteSeats] = useState(false);
+  const [banReason, setBanReason]           = useState("");
+  const [showBanInput, setShowBanInput]     = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -108,21 +110,13 @@ export function UserProfilePopup({
     if (!user || !myProfile) return;
     setMsgLoading(true);
     const roomId = await getOrCreateDmRoom(
-      user.id,
-      myProfile.username,
-      member.user_id,
-      member.username,
+      user.id, myProfile.username,
+      member.user_id, member.username,
     );
     setMsgLoading(false);
-    if (!roomId) {
-      toast.error("Could not open chat");
-      return;
-    }
+    if (!roomId) { toast.error("Could not open chat"); return; }
     onClose();
-    navigate({
-      to: "/messages",
-      search: { with: member.user_id, name: member.username },
-    });
+    navigate({ to: "/messages", search: { with: member.user_id, name: member.username } });
   }, [user, myProfile, member, navigate, onClose]);
 
   const sid  = sidFromUserId(member.user_id);
@@ -134,33 +128,34 @@ export function UserProfilePopup({
   const avatar = profile?.profile_image ?? member.avatar ?? defaultAvatar(member.username);
   const cover  = profile?.cover_image   ?? defaultCover(member.user_id);
 
-  // ---- Manage button permission logic ----
+  // ── Permission logic ────────────────────────────────────────────────────────
   const targetRole    = member.role;
   const viewerRole    = currentUserRole ?? "member";
   const isTargetOwner = targetRole === "owner";
 
-  // Who can see the Manage button at all?
   const viewerIsOwner   = viewerRole === "owner";
   const viewerIsCoOwner = viewerRole === "co_owner";
   const viewerIsAdmin   = viewerRole === "admin";
 
-  // Admin can only manage plain members
-  const adminCanTarget = viewerIsAdmin && targetRole === "member";
-  // Co-owner can manage members & admins
-  const coOwnerCanTarget = viewerIsCoOwner && (targetRole === "member" || targetRole === "admin");
-  // Owner can manage everyone except other owners
-  const ownerCanTarget = viewerIsOwner && !isTargetOwner;
+  const adminCanTarget   = viewerIsAdmin   && targetRole === "member";
+  const coOwnerCanTarget = viewerIsCoOwner && (targetRole === "member" || targetRole === "admin" || targetRole === "vip");
+  const ownerCanTarget   = viewerIsOwner   && !isTargetOwner;
 
   const canShowManage =
     canModerate && !isCurrentUser && !isTargetOwner &&
     (ownerCanTarget || coOwnerCanTarget || adminCanTarget);
 
-  // Which actions are available?
-  const canRemoveSeat  = canShowManage; // everyone who can manage can remove from seat
-  const canKickRoom    = canShowManage && (viewerIsOwner || viewerIsCoOwner);
-  const canMakeAdmin   = canShowManage && (viewerIsOwner || viewerIsCoOwner) && targetRole === "member";
-  const canMakeCoOwner = canShowManage && viewerIsOwner && (targetRole === "member" || targetRole === "admin");
-  const canRemoveRole  = canShowManage && (viewerIsOwner || viewerIsCoOwner) && (targetRole === "admin" || targetRole === "co_owner");
+  const canRemoveSeat   = canShowManage;
+  const canKickRoom     = canShowManage && (viewerIsOwner || viewerIsCoOwner);
+  const canMakeAdmin    = canShowManage && (viewerIsOwner || viewerIsCoOwner) && (targetRole === "member" || targetRole === "vip");
+  const canMakeVip      = canShowManage && (viewerIsOwner || viewerIsCoOwner) && (targetRole === "member" || targetRole === "admin");
+  const canMakeCoOwner  = canShowManage && viewerIsOwner && (targetRole === "member" || targetRole === "admin" || targetRole === "vip");
+  const canRemoveRole   = canShowManage && (viewerIsOwner || viewerIsCoOwner) && (targetRole === "admin" || targetRole === "co_owner" || targetRole === "vip");
+  const canBan          = canShowManage && (viewerIsOwner || viewerIsCoOwner);
+
+  // Empty seats that aren't locked and are available to invite to
+  const emptySeats = availableSeats?.filter((s) => !s.user_id && !s.locked) ?? [];
+  const canInvite  = canShowManage && emptySeats.length > 0 && !isCurrentUser;
 
   return (
     <div
@@ -248,7 +243,7 @@ export function UserProfilePopup({
             <p className="text-[11px] text-muted-foreground mb-4">Joined ChitChat · {joinDate}</p>
           )}
 
-          {/* Action buttons: Follow / Message / Manage */}
+          {/* Action buttons */}
           {!isCurrentUser && (
             <div className={`grid gap-2 mb-4 ${canShowManage ? "grid-cols-3" : "grid-cols-2"}`}>
               {/* Follow */}
@@ -283,7 +278,7 @@ export function UserProfilePopup({
                 )}
               </button>
 
-              {/* Manage — only for mods */}
+              {/* Manage — mods only */}
               {canShowManage && (
                 <button
                   onClick={() => setManageOpen((o) => !o)}
@@ -301,7 +296,7 @@ export function UserProfilePopup({
             </div>
           )}
 
-          {/* Manage panel — expands below the buttons */}
+          {/* Manage panel */}
           {canShowManage && manageOpen && (
             <div className="mb-4 rounded-2xl overflow-hidden border border-white/10">
               {/* Header */}
@@ -310,14 +305,42 @@ export function UserProfilePopup({
                   Manage @{member.username}
                 </p>
                 {viewerIsAdmin && (
-                  <p className="text-[10px] text-yellow-400/80 mt-0.5">
-                    Admin · limited controls only
-                  </p>
+                  <p className="text-[10px] text-yellow-400/80 mt-0.5">Admin · limited controls</p>
                 )}
               </div>
 
               <div className="p-3 flex flex-col gap-2">
-                {/* Mute from seat — available to all managers */}
+                {/* Invite to seat */}
+                {canInvite && onInviteToSeat && (
+                  <div>
+                    <button
+                      onClick={() => setShowInviteSeats((s) => !s)}
+                      className="h-11 rounded-xl glass text-sm font-medium flex items-center gap-3 px-4 active:scale-95 w-full text-left"
+                    >
+                      <Mic className="h-4 w-4 text-green-400 flex-shrink-0" />
+                      <div className="flex-1">
+                        <p className="text-xs font-semibold text-green-300">Invite to Seat</p>
+                        <p className="text-[10px] text-muted-foreground">Move user to a stage seat</p>
+                      </div>
+                      {showInviteSeats ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
+                    </button>
+                    {showInviteSeats && (
+                      <div className="mt-1 glass rounded-xl p-2 flex flex-wrap gap-1.5">
+                        {emptySeats.map((s) => (
+                          <button
+                            key={s.seat_index}
+                            onClick={() => { onInviteToSeat(s.seat_index); onClose(); }}
+                            className="h-8 px-3 rounded-full bg-green-400/15 text-green-300 text-xs font-semibold active:scale-95"
+                          >
+                            {s.seat_index === 0 ? "🎤 Host" : `Seat ${s.seat_index}`}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Mute */}
                 {onMute && (
                   <button
                     onClick={() => { onMute(); onClose(); }}
@@ -331,7 +354,7 @@ export function UserProfilePopup({
                   </button>
                 )}
 
-                {/* Remove from seat — available to all managers */}
+                {/* Remove from seat */}
                 {canRemoveSeat && onKick && (
                   <button
                     onClick={() => { onKick(); onClose(); }}
@@ -340,21 +363,16 @@ export function UserProfilePopup({
                     <UserX className="h-4 w-4 text-orange-300 flex-shrink-0" />
                     <div>
                       <p className="text-xs font-semibold">Remove from Seat</p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {viewerIsAdmin ? "Move to audience (admin limit)" : "Move user to audience"}
-                      </p>
+                      <p className="text-[10px] text-muted-foreground">Move user back to audience</p>
                     </div>
                   </button>
                 )}
 
-                {/* Kick from room — only owners & co-owners */}
+                {/* Kick from room */}
                 {canKickRoom && onKick && (
                   <button
                     onClick={() => {
-                      if (confirm(`Remove @${member.username} from the room?`)) {
-                        onKick();
-                        onClose();
-                      }
+                      if (confirm(`Remove @${member.username} from the room?`)) { onKick(); onClose(); }
                     }}
                     className="h-11 rounded-xl bg-red-500/10 border border-red-500/20 text-sm font-medium flex items-center gap-3 px-4 active:scale-95 w-full text-left"
                   >
@@ -366,12 +384,24 @@ export function UserProfilePopup({
                   </button>
                 )}
 
-                {/* Divider before role actions */}
-                {(canMakeAdmin || canMakeCoOwner || canRemoveRole) && (
+                {/* Role actions */}
+                {(canMakeAdmin || canMakeVip || canMakeCoOwner || canRemoveRole) && (
                   <div className="border-t border-white/8 my-1" />
                 )}
 
-                {/* Make Admin */}
+                {canMakeVip && onPromote && (
+                  <button
+                    onClick={() => { onPromote("vip"); onClose(); }}
+                    className="h-11 rounded-xl glass text-sm font-medium flex items-center gap-3 px-4 active:scale-95 w-full text-left"
+                  >
+                    <Diamond className="h-4 w-4 text-cyan-300 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs font-semibold text-cyan-300">Make VIP</p>
+                      <p className="text-[10px] text-muted-foreground">Special badge, seat priority</p>
+                    </div>
+                  </button>
+                )}
+
                 {canMakeAdmin && onPromote && (
                   <button
                     onClick={() => { onPromote("admin"); onClose(); }}
@@ -385,7 +415,6 @@ export function UserProfilePopup({
                   </button>
                 )}
 
-                {/* Make Co-owner — owner only */}
                 {canMakeCoOwner && onPromote && (
                   <button
                     onClick={() => { onPromote("co_owner"); onClose(); }}
@@ -399,7 +428,6 @@ export function UserProfilePopup({
                   </button>
                 )}
 
-                {/* Remove role (demote) — owners & co-owners */}
                 {canRemoveRole && onDemote && (
                   <button
                     onClick={() => { onDemote(); onClose(); }}
@@ -413,7 +441,7 @@ export function UserProfilePopup({
                   </button>
                 )}
 
-                {/* Crown transfer — owner only (canShowManage already excludes target owner) */}
+                {/* Crown transfer */}
                 {viewerIsOwner && canShowManage && (
                   <button
                     onClick={() => toast("Crown transfer coming soon")}
@@ -425,6 +453,48 @@ export function UserProfilePopup({
                       <p className="text-[10px] text-muted-foreground">Make them the new host</p>
                     </div>
                   </button>
+                )}
+
+                {/* Ban */}
+                {canBan && onBan && (
+                  <>
+                    <div className="border-t border-white/8 my-1" />
+                    {!showBanInput ? (
+                      <button
+                        onClick={() => setShowBanInput(true)}
+                        className="h-11 rounded-xl bg-red-900/20 border border-red-500/20 text-sm font-medium flex items-center gap-3 px-4 active:scale-95 w-full text-left"
+                      >
+                        <Ban className="h-4 w-4 text-red-400 flex-shrink-0" />
+                        <div>
+                          <p className="text-xs font-semibold text-red-300">Ban from Room</p>
+                          <p className="text-[10px] text-red-400/60">Permanently block this user</p>
+                        </div>
+                      </button>
+                    ) : (
+                      <div className="space-y-2">
+                        <input
+                          value={banReason}
+                          onChange={(e) => setBanReason(e.target.value)}
+                          placeholder="Ban reason (optional)"
+                          className="w-full glass rounded-xl h-10 px-3 text-xs outline-none focus:ring-1 focus:ring-red-400"
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            onClick={() => { setShowBanInput(false); setBanReason(""); }}
+                            className="h-9 rounded-xl glass text-xs font-medium active:scale-95"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => { onBan(banReason || undefined); onClose(); }}
+                            className="h-9 rounded-xl bg-red-600/30 border border-red-500/30 text-red-300 text-xs font-semibold active:scale-95"
+                          >
+                            Confirm Ban
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
