@@ -65,6 +65,7 @@ function RoomPage() {
   const [speakingUids, setSpeakingUids] = useState<Set<number>>(new Set());
   const [micOn, setMicOn] = useState(true);
   const [actingOn, setActingOn] = useState<DBSeat | null>(null);
+  const [confirmLeave, setConfirmLeave] = useState(false);
 
   const meMember = useMemo(
     () => members.find((m) => m.user_id === user?.id),
@@ -81,6 +82,7 @@ function RoomPage() {
   // Agora refs
   const clientRef = useRef<any>(null);
   const localTrackRef = useRef<any>(null);
+  const micPermRef = useRef<MediaStream | null>(null);
 
   // ---------- Load room + check privacy ----------
   useEffect(() => {
@@ -273,6 +275,22 @@ function RoomPage() {
     if (!user || !profile) return;
     if (seat.user_id) return;
     if (seat.locked) return toast("Seat is locked");
+    // Host seat (0) is reserved for owner/co-owner/admin
+    if (seat.seat_index === 0 && !isMod) return toast("Host seat is for hosts only");
+
+    // Pre-request mic permission from this user gesture so Agora can publish later
+    try {
+      if (!micPermRef.current) {
+        micPermRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
+    } catch (e: any) {
+      toast.error(
+        e?.name === "NotAllowedError"
+          ? "Mic permission denied. Enable it in browser settings."
+          : "Microphone unavailable",
+      );
+      return;
+    }
     if (mySeat) {
       // move: free old, claim new in two ops
       await supabase
@@ -302,6 +320,10 @@ function RoomPage() {
       .update({ user_id: null, username: null, avatar: null, joined_at: null, muted: false })
       .eq("room_id", roomId)
       .eq("seat_index", mySeat.seat_index);
+    try {
+      micPermRef.current?.getTracks().forEach((t) => t.stop());
+      micPermRef.current = null;
+    } catch {}
   };
 
   const toggleMic = async () => {
@@ -426,11 +448,11 @@ function RoomPage() {
   const rest = seats.filter((s) => s.seat_index !== 0).sort((a, b) => a.seat_index - b.seat_index);
 
   return (
-    <AppShell>
+    <AppShell hideNav>
       {/* Top bar */}
       <header className="px-4 pt-12 pb-3 flex items-center gap-2.5 animate-fade-up">
         <button
-          onClick={leaveRoom}
+          onClick={() => setConfirmLeave(true)}
           className="h-10 w-10 rounded-full glass grid place-items-center active:scale-95"
           aria-label="Back"
         >
@@ -440,10 +462,10 @@ function RoomPage() {
           <h1 className="font-bold text-base leading-tight truncate">{room.name}</h1>
           <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-[oklch(0.7_0.2_150)] animate-pulse" />
-            <Users className="h-3 w-3" /> {room.listener_count} · {room.category}
+            <Users className="h-3 w-3" /> {members.length} Vibing · {room.category}
           </p>
         </div>
-        {isOwner && (
+        {isMod && (
           <button
             onClick={() => setShowSettings(true)}
             className="h-10 w-10 rounded-full glass grid place-items-center active:scale-95"
@@ -451,12 +473,6 @@ function RoomPage() {
             <Settings className="h-4 w-4" />
           </button>
         )}
-        <button
-          onClick={leaveRoom}
-          className="px-3.5 h-10 rounded-full bg-[oklch(0.3_0.15_25)] text-[oklch(0.85_0.18_30)] text-xs font-semibold active:scale-95"
-        >
-          Leave
-        </button>
       </header>
 
       {/* Stage */}
@@ -643,8 +659,41 @@ function RoomPage() {
       )}
 
       {/* Settings */}
-      {showSettings && isOwner && (
+      {showSettings && isMod && (
         <RoomSettings room={room} onClose={() => setShowSettings(false)} onDelete={deleteRoom} />
+      )}
+
+      {/* Leave confirm */}
+      {confirmLeave && (
+        <div
+          className="fixed inset-0 z-[95] bg-black/75 backdrop-blur-md grid place-items-center px-6 animate-fade-up"
+          onClick={() => setConfirmLeave(false)}
+        >
+          <div
+            className="w-full max-w-sm glass-strong rounded-3xl p-6 text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mx-auto h-12 w-12 rounded-full gradient-electric grid place-items-center shadow-glow mb-3">
+              <LogOut className="h-5 w-5 text-white" />
+            </div>
+            <h3 className="font-bold text-lg">Leave Room?</h3>
+            <p className="text-xs text-muted-foreground mt-1">The vibe will miss you.</p>
+            <div className="grid grid-cols-2 gap-2 mt-5">
+              <button
+                onClick={() => setConfirmLeave(false)}
+                className="h-11 rounded-2xl glass text-sm font-semibold active:scale-95"
+              >
+                Stay
+              </button>
+              <button
+                onClick={leaveRoom}
+                className="h-11 rounded-2xl bg-[oklch(0.3_0.15_25)] text-[oklch(0.9_0.18_30)] text-sm font-semibold active:scale-95"
+              >
+                Leave
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </AppShell>
   );
@@ -700,13 +749,21 @@ function SeatView({
       <div className="flex flex-col items-center gap-1.5">
         <button
           onClick={seat.locked ? onLockToggle : onTake}
-          className={`${size} rounded-full glass grid place-items-center border-2 border-dashed border-white/15 active:scale-95 ${
-            seat.locked ? "opacity-60" : ""
-          }`}
+          className={`${size} rounded-full glass grid place-items-center border-2 border-dashed ${
+            host ? "border-electric/60 shadow-glow-soft" : "border-white/15"
+          } active:scale-95 ${seat.locked ? "opacity-60" : ""}`}
         >
-          {seat.locked ? <Lock className="h-4 w-4 text-muted-foreground" /> : <Plus className="h-5 w-5 text-muted-foreground" />}
+          {seat.locked ? (
+            <Lock className="h-4 w-4 text-muted-foreground" />
+          ) : host ? (
+            <Crown className="h-6 w-6 text-electric" />
+          ) : (
+            <Plus className="h-5 w-5 text-muted-foreground" />
+          )}
         </button>
-        <span className="text-[10px] text-muted-foreground">{seat.locked ? "Locked" : "Empty"}</span>
+        <span className={`text-[10px] tracking-wider font-semibold ${host ? "text-electric" : "text-muted-foreground"}`}>
+          {seat.locked ? "Locked" : host ? "HOST SEAT" : "Empty"}
+        </span>
       </div>
     );
   }
@@ -745,7 +802,7 @@ function SeatView({
         {seat.username}
         {isMe ? " (you)" : ""}
       </span>
-      {host && <span className="text-[9px] tracking-wider text-electric font-semibold">OWNER</span>}
+      {host && <span className="text-[9px] tracking-[0.15em] text-electric font-semibold">HOST SEAT</span>}
     </div>
   );
 }
