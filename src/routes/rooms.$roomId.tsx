@@ -762,27 +762,28 @@ function SeatView({
   onModerate?: () => void;
   onLockToggle?: () => void;
 }) {
-  const size = host ? "h-24 w-24" : "h-16 w-16";
+  const size = host ? "h-28 w-28" : "h-[5.35rem] w-[5.35rem]";
 
   if (!seat.user_id) {
     return (
-      <div className="flex flex-col items-center gap-1.5">
+      <div className="flex flex-col items-center gap-2">
         <button
           onClick={seat.locked ? onLockToggle : onTake}
-          className={`${size} rounded-full glass grid place-items-center border-2 border-dashed ${
-            host ? "border-electric/60 shadow-glow-soft" : "border-white/15"
-          } active:scale-95 ${seat.locked ? "opacity-60" : ""}`}
+          className={`relative ${size} rounded-full grid place-items-center border transition-transform active:scale-95 ${
+            host
+              ? "border-electric/60 bg-[radial-gradient(circle_at_center,oklch(0.2_0.07_260),oklch(0.11_0.025_270))] shadow-glow"
+              : "border-electric/35 bg-[linear-gradient(180deg,oklch(0.18_0.045_270),oklch(0.11_0.02_270))]"
+          } ${seat.locked ? "opacity-60" : ""}`}
         >
+          {host && <span className="absolute -top-2 h-8 w-8 rounded-full grid place-items-center bg-electric text-background shadow-glow-soft"><Crown className="h-4 w-4" /></span>}
           {seat.locked ? (
             <Lock className="h-4 w-4 text-muted-foreground" />
-          ) : host ? (
-            <Crown className="h-6 w-6 text-electric" />
           ) : (
-            <Plus className="h-5 w-5 text-muted-foreground" />
+            <Plus className={`${host ? "h-7 w-7 text-electric" : "h-5 w-5 text-electric"}`} />
           )}
         </button>
-        <span className={`text-[10px] tracking-wider font-semibold ${host ? "text-electric" : "text-muted-foreground"}`}>
-          {seat.locked ? "Locked" : host ? "HOST SEAT" : "Empty"}
+        <span className={`rounded-full border px-3 py-1 text-[10px] font-semibold tracking-[0.14em] ${host ? "border-electric/40 text-electric" : "border-white/8 text-muted-foreground"}`}>
+          {seat.locked ? "LOCKED" : host ? "HOST SEAT" : `SEAT ${seat.seat_index}`}
         </span>
       </div>
     );
@@ -794,20 +795,20 @@ function SeatView({
         {speaking && <span className="absolute -inset-1.5 rounded-full animate-pulse-ring" />}
         <button
           onClick={isMe ? onSelf : onModerate}
-          className={`relative ${size} rounded-full p-[2px] ${
-            speaking ? "gradient-electric" : "bg-white/10"
+          className={`relative ${size} rounded-full p-[3px] ${
+            speaking ? "gradient-electric shadow-glow" : "bg-[linear-gradient(180deg,oklch(0.72_0.22_255),oklch(0.5_0.17_255))]"
           } active:scale-95`}
         >
           <img src={seat.avatar ?? defaultAvatar(seat.username ?? "u")} alt="" className="h-full w-full rounded-full object-cover" />
         </button>
         {host && (
-          <span className="absolute -top-1 -right-1 h-7 w-7 rounded-full grid place-items-center bg-gradient-to-br from-[oklch(0.85_0.18_85)] to-[oklch(0.7_0.18_60)] shadow-glow-soft">
-            <Crown className="h-3.5 w-3.5 text-black" />
+          <span className="absolute -top-2 left-1/2 h-8 w-8 -translate-x-1/2 rounded-full grid place-items-center bg-electric text-background shadow-glow-soft">
+            <Crown className="h-4 w-4" />
           </span>
         )}
         <span
-          className={`absolute -bottom-0.5 -right-0.5 h-6 w-6 rounded-full grid place-items-center ${
-            seat.muted ? "bg-[oklch(0.25_0.05_270)]" : "bg-electric"
+          className={`absolute bottom-0 right-0 h-7 w-7 rounded-full grid place-items-center ${
+            seat.muted ? "bg-[oklch(0.36_0.18_20)]" : "bg-electric"
           } ring-2 ring-background`}
         >
           {seat.muted ? <MicOff className="h-3 w-3 text-muted-foreground" /> : <Mic className="h-3 w-3 text-white" />}
@@ -818,11 +819,13 @@ function SeatView({
           </span>
         )}
       </div>
-      <span className={`${host ? "text-sm" : "text-xs"} font-medium leading-none truncate max-w-[80px]`}>
-        {seat.username}
-        {isMe ? " (you)" : ""}
-      </span>
-      {host && <span className="text-[9px] tracking-[0.15em] text-electric font-semibold">HOST SEAT</span>}
+      {!host && (
+        <span className="text-xs font-medium leading-none truncate max-w-[84px] text-center">
+          {seat.username}
+          {isMe ? " (you)" : ""}
+        </span>
+      )}
+      {host && <span className="text-[10px] tracking-[0.16em] text-electric font-semibold">HOST</span>}
     </div>
   );
 }
