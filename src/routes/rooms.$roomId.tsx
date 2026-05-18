@@ -109,7 +109,7 @@ function RoomPage() {
         } else if ((data as DBRoom).privacy === "private") {
           setNeedsPassword(true);
         } else {
-          await joinRoom();
+          await joinRoom(undefined, data as DBRoom);
         }
       }
     })();
@@ -235,10 +235,10 @@ function RoomPage() {
   }, [joined, room?.id, !!mySeat, user?.id]);
 
   // ---------- Actions ----------
-  const joinRoom = async (pw?: string) => {
+  const joinRoom = async (pw?: string, targetRoom: DBRoom | null = room) => {
     if (!user || !profile) return;
-    if (!room) return;
-    if (room.privacy === "private" && room.password_hash && pw !== room.password_hash) {
+    if (!targetRoom) return;
+    if (targetRoom.privacy === "private" && targetRoom.password_hash && pw !== targetRoom.password_hash) {
       toast.error("Wrong password");
       return;
     }
@@ -275,8 +275,11 @@ function RoomPage() {
     if (!user || !profile) return;
     if (seat.user_id) return;
     if (seat.locked) return toast("Seat is locked");
-    // Host seat (0) is reserved for owner/co-owner/admin
-    if (seat.seat_index === 0 && !isMod) return toast("Host seat is for hosts only");
+    if (mySeat?.seat_index === seat.seat_index) return;
+
+    if (!joined) {
+      await joinRoom(undefined, room);
+    }
 
     // Pre-request mic permission from this user gesture so Agora can publish later
     try {
@@ -293,11 +296,15 @@ function RoomPage() {
     }
     if (mySeat) {
       // move: free old, claim new in two ops
-      await supabase
+      const { error: clearError } = await supabase
         .from("room_seats")
         .update({ user_id: null, username: null, avatar: null, joined_at: null, muted: false })
         .eq("room_id", roomId)
         .eq("seat_index", mySeat.seat_index);
+      if (clearError) {
+        toast.error(clearError.message);
+        return;
+      }
     }
     const { error } = await supabase
       .from("room_seats")
@@ -310,7 +317,11 @@ function RoomPage() {
       })
       .eq("room_id", roomId)
       .eq("seat_index", seat.seat_index);
-    if (error) toast.error(error.message);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success(seat.seat_index === 0 ? "You took the host seat" : "Seat joined");
   };
 
   const leaveSeat = async () => {
