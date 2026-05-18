@@ -109,7 +109,7 @@ function RoomPage() {
         } else if ((data as DBRoom).privacy === "private") {
           setNeedsPassword(true);
         } else {
-          await joinRoom();
+          await joinRoom(undefined, data as DBRoom);
         }
       }
     })();
@@ -235,10 +235,10 @@ function RoomPage() {
   }, [joined, room?.id, !!mySeat, user?.id]);
 
   // ---------- Actions ----------
-  const joinRoom = async (pw?: string) => {
+  const joinRoom = async (pw?: string, targetRoom: DBRoom | null = room) => {
     if (!user || !profile) return;
-    if (!room) return;
-    if (room.privacy === "private" && room.password_hash && pw !== room.password_hash) {
+    if (!targetRoom) return;
+    if (targetRoom.privacy === "private" && targetRoom.password_hash && pw !== targetRoom.password_hash) {
       toast.error("Wrong password");
       return;
     }
@@ -275,8 +275,11 @@ function RoomPage() {
     if (!user || !profile) return;
     if (seat.user_id) return;
     if (seat.locked) return toast("Seat is locked");
-    // Host seat (0) is reserved for owner/co-owner/admin
-    if (seat.seat_index === 0 && !isMod) return toast("Host seat is for hosts only");
+    if (mySeat?.seat_index === seat.seat_index) return;
+
+    if (!joined) {
+      await joinRoom(undefined, room);
+    }
 
     // Pre-request mic permission from this user gesture so Agora can publish later
     try {
@@ -293,11 +296,15 @@ function RoomPage() {
     }
     if (mySeat) {
       // move: free old, claim new in two ops
-      await supabase
+      const { error: clearError } = await supabase
         .from("room_seats")
         .update({ user_id: null, username: null, avatar: null, joined_at: null, muted: false })
         .eq("room_id", roomId)
         .eq("seat_index", mySeat.seat_index);
+      if (clearError) {
+        toast.error(clearError.message);
+        return;
+      }
     }
     const { error } = await supabase
       .from("room_seats")
@@ -310,7 +317,11 @@ function RoomPage() {
       })
       .eq("room_id", roomId)
       .eq("seat_index", seat.seat_index);
-    if (error) toast.error(error.message);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success(seat.seat_index === 0 ? "You took the host seat" : "Seat joined");
   };
 
   const leaveSeat = async () => {
@@ -446,11 +457,12 @@ function RoomPage() {
 
   const owner = seats.find((s) => s.seat_index === 0);
   const rest = seats.filter((s) => s.seat_index !== 0).sort((a, b) => a.seat_index - b.seat_index);
+  const roomCode = room.id.slice(0, 6).toUpperCase();
 
   return (
     <AppShell hideNav>
       {/* Top bar */}
-      <header className="px-4 pt-12 pb-3 flex items-center gap-2.5 animate-fade-up">
+      <header className="px-4 pt-12 pb-3 flex items-start gap-2.5 animate-fade-up">
         <button
           onClick={() => setConfirmLeave(true)}
           className="h-10 w-10 rounded-full glass grid place-items-center active:scale-95"
@@ -459,11 +471,15 @@ function RoomPage() {
           <ArrowLeft className="h-4 w-4" />
         </button>
         <div className="flex-1 min-w-0">
-          <h1 className="font-bold text-base leading-tight truncate">{room.name}</h1>
-          <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-[oklch(0.7_0.2_150)] animate-pulse" />
-            <Users className="h-3 w-3" /> {members.length} Vibing · {room.category}
-          </p>
+          <h1 className="font-bold text-[1.1rem] leading-tight truncate">{room.name}</h1>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+            <span className="glass rounded-full px-3 py-1">ID: {roomCode}</span>
+            <span className="glass rounded-full px-3 py-1 text-electric">{room.category}</span>
+            <span className="glass rounded-full px-3 py-1 flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-[oklch(0.7_0.2_150)] animate-pulse" />
+              <Users className="h-3 w-3" /> {members.length} Members
+            </span>
+          </div>
         </div>
         {isMod && (
           <button
@@ -476,13 +492,17 @@ function RoomPage() {
       </header>
 
       {/* Stage */}
-      <section className="relative px-5 mt-3">
-        <div className="relative glass-strong rounded-3xl p-6 shadow-card overflow-hidden">
-          <div className="absolute -top-20 -left-10 h-48 w-48 rounded-full bg-electric/30 blur-3xl" />
-          <div className="absolute -bottom-20 -right-10 h-48 w-48 rounded-full bg-[oklch(0.6_0.28_295)]/25 blur-3xl" />
+      <section className="relative px-4 mt-3">
+        <div className="relative rounded-[2rem] border border-white/8 bg-[linear-gradient(180deg,oklch(0.15_0.03_270/.92),oklch(0.1_0.025_270/.98))] px-4 pt-6 pb-7 shadow-card overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-28 bg-[radial-gradient(circle_at_top,oklch(0.62_0.26_255/.28),transparent_72%)]" />
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute left-1/2 top-[7.4rem] h-[11rem] w-[18rem] -translate-x-1/2 rounded-[50%] border border-electric/16" />
+            <div className="absolute left-1/2 top-[8.9rem] h-[14rem] w-[21rem] -translate-x-1/2 rounded-[50%] border border-electric/12" />
+            <div className="absolute left-1/2 top-[10.5rem] h-[17rem] w-[24rem] -translate-x-1/2 rounded-[50%] border border-electric/8" />
+          </div>
 
           {/* Owner seat */}
-          <div className="relative flex justify-center mb-6">
+          <div className="relative flex justify-center mb-7">
             {owner && (
               <SeatView
                 seat={owner}
@@ -496,7 +516,7 @@ function RoomPage() {
             )}
           </div>
 
-          <div className="relative grid grid-cols-3 gap-y-5 gap-x-2 place-items-center">
+          <div className="relative grid grid-cols-3 gap-y-6 gap-x-2 place-items-start">
             {rest.map((s) => (
               <SeatView
                 key={s.seat_index}
@@ -742,27 +762,28 @@ function SeatView({
   onModerate?: () => void;
   onLockToggle?: () => void;
 }) {
-  const size = host ? "h-24 w-24" : "h-16 w-16";
+  const size = host ? "h-28 w-28" : "h-[5.35rem] w-[5.35rem]";
 
   if (!seat.user_id) {
     return (
-      <div className="flex flex-col items-center gap-1.5">
+      <div className="flex flex-col items-center gap-2">
         <button
           onClick={seat.locked ? onLockToggle : onTake}
-          className={`${size} rounded-full glass grid place-items-center border-2 border-dashed ${
-            host ? "border-electric/60 shadow-glow-soft" : "border-white/15"
-          } active:scale-95 ${seat.locked ? "opacity-60" : ""}`}
+          className={`relative ${size} rounded-full grid place-items-center border transition-transform active:scale-95 ${
+            host
+              ? "border-electric/60 bg-[radial-gradient(circle_at_center,oklch(0.2_0.07_260),oklch(0.11_0.025_270))] shadow-glow"
+              : "border-electric/35 bg-[linear-gradient(180deg,oklch(0.18_0.045_270),oklch(0.11_0.02_270))]"
+          } ${seat.locked ? "opacity-60" : ""}`}
         >
+          {host && <span className="absolute -top-2 h-8 w-8 rounded-full grid place-items-center bg-electric text-background shadow-glow-soft"><Crown className="h-4 w-4" /></span>}
           {seat.locked ? (
             <Lock className="h-4 w-4 text-muted-foreground" />
-          ) : host ? (
-            <Crown className="h-6 w-6 text-electric" />
           ) : (
-            <Plus className="h-5 w-5 text-muted-foreground" />
+            <Plus className={`${host ? "h-7 w-7 text-electric" : "h-5 w-5 text-electric"}`} />
           )}
         </button>
-        <span className={`text-[10px] tracking-wider font-semibold ${host ? "text-electric" : "text-muted-foreground"}`}>
-          {seat.locked ? "Locked" : host ? "HOST SEAT" : "Empty"}
+        <span className={`rounded-full border px-3 py-1 text-[10px] font-semibold tracking-[0.14em] ${host ? "border-electric/40 text-electric" : "border-white/8 text-muted-foreground"}`}>
+          {seat.locked ? "LOCKED" : host ? "HOST SEAT" : `SEAT ${seat.seat_index}`}
         </span>
       </div>
     );
@@ -774,20 +795,26 @@ function SeatView({
         {speaking && <span className="absolute -inset-1.5 rounded-full animate-pulse-ring" />}
         <button
           onClick={isMe ? onSelf : onModerate}
-          className={`relative ${size} rounded-full p-[2px] ${
-            speaking ? "gradient-electric" : "bg-white/10"
+          className={`relative ${size} rounded-full p-[3px] ${
+            speaking ? "gradient-electric shadow-glow" : "bg-[linear-gradient(180deg,oklch(0.72_0.22_255),oklch(0.5_0.17_255))]"
           } active:scale-95`}
         >
-          <img src={seat.avatar ?? defaultAvatar(seat.username ?? "u")} alt="" className="h-full w-full rounded-full object-cover" />
+          {host ? (
+            <div className="flex h-full w-full items-center justify-center rounded-full bg-[radial-gradient(circle_at_center,oklch(0.2_0.06_255),oklch(0.1_0.025_270))] text-electric">
+              <Crown className="h-8 w-8" />
+            </div>
+          ) : (
+            <img src={seat.avatar ?? defaultAvatar(seat.username ?? "u")} alt="" className="h-full w-full rounded-full object-cover" />
+          )}
         </button>
         {host && (
-          <span className="absolute -top-1 -right-1 h-7 w-7 rounded-full grid place-items-center bg-gradient-to-br from-[oklch(0.85_0.18_85)] to-[oklch(0.7_0.18_60)] shadow-glow-soft">
-            <Crown className="h-3.5 w-3.5 text-black" />
+          <span className="absolute -top-2 left-1/2 h-8 w-8 -translate-x-1/2 rounded-full grid place-items-center bg-electric text-background shadow-glow-soft">
+            <Crown className="h-4 w-4" />
           </span>
         )}
         <span
-          className={`absolute -bottom-0.5 -right-0.5 h-6 w-6 rounded-full grid place-items-center ${
-            seat.muted ? "bg-[oklch(0.25_0.05_270)]" : "bg-electric"
+          className={`absolute bottom-0 right-0 h-7 w-7 rounded-full grid place-items-center ${
+            seat.muted ? "bg-[oklch(0.36_0.18_20)]" : "bg-electric"
           } ring-2 ring-background`}
         >
           {seat.muted ? <MicOff className="h-3 w-3 text-muted-foreground" /> : <Mic className="h-3 w-3 text-white" />}
@@ -798,11 +825,13 @@ function SeatView({
           </span>
         )}
       </div>
-      <span className={`${host ? "text-sm" : "text-xs"} font-medium leading-none truncate max-w-[80px]`}>
-        {seat.username}
-        {isMe ? " (you)" : ""}
-      </span>
-      {host && <span className="text-[9px] tracking-[0.15em] text-electric font-semibold">HOST SEAT</span>}
+      {!host && (
+        <span className="text-xs font-medium leading-none truncate max-w-[84px] text-center">
+          {seat.username}
+          {isMe ? " (you)" : ""}
+        </span>
+      )}
+      {host && <span className="text-[10px] tracking-[0.16em] text-electric font-semibold">HOST</span>}
     </div>
   );
 }
