@@ -2,7 +2,6 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Mail, Lock, User as UserIcon, Calendar, MapPin, Sparkles, ArrowRight, Eye, EyeOff, ChevronLeft } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable";
 import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/auth")({
@@ -259,14 +258,21 @@ function Divider() {
 
 function SocialButtons() {
   const [busy, setBusy] = useState<string | null>(null);
+
   const oauth = async (provider: "google" | "apple") => {
     setBusy(provider);
-    const r = await lovable.auth.signInWithOAuth(provider, { redirect_uri: window.location.origin + "/home" });
-    if (r.error) {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo: `${window.location.origin}/home`,
+      },
+    });
+    if (error) {
       setBusy(null);
       alert(`Could not sign in with ${provider}.`);
     }
   };
+
   return (
     <div className="grid grid-cols-2 gap-3">
       <button
