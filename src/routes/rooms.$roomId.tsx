@@ -65,6 +65,7 @@ function RoomPage() {
   const [speakingUids, setSpeakingUids] = useState<Set<number>>(new Set());
   const [micOn, setMicOn] = useState(true);
   const [actingOn, setActingOn] = useState<DBSeat | null>(null);
+  const [confirmLeave, setConfirmLeave] = useState(false);
 
   const meMember = useMemo(
     () => members.find((m) => m.user_id === user?.id),
@@ -81,6 +82,7 @@ function RoomPage() {
   // Agora refs
   const clientRef = useRef<any>(null);
   const localTrackRef = useRef<any>(null);
+  const micPermRef = useRef<MediaStream | null>(null);
 
   // ---------- Load room + check privacy ----------
   useEffect(() => {
@@ -273,6 +275,22 @@ function RoomPage() {
     if (!user || !profile) return;
     if (seat.user_id) return;
     if (seat.locked) return toast("Seat is locked");
+    // Host seat (0) is reserved for owner/co-owner/admin
+    if (seat.seat_index === 0 && !isMod) return toast("Host seat is for hosts only");
+
+    // Pre-request mic permission from this user gesture so Agora can publish later
+    try {
+      if (!micPermRef.current) {
+        micPermRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
+    } catch (e: any) {
+      toast.error(
+        e?.name === "NotAllowedError"
+          ? "Mic permission denied. Enable it in browser settings."
+          : "Microphone unavailable",
+      );
+      return;
+    }
     if (mySeat) {
       // move: free old, claim new in two ops
       await supabase
@@ -302,6 +320,10 @@ function RoomPage() {
       .update({ user_id: null, username: null, avatar: null, joined_at: null, muted: false })
       .eq("room_id", roomId)
       .eq("seat_index", mySeat.seat_index);
+    try {
+      micPermRef.current?.getTracks().forEach((t) => t.stop());
+      micPermRef.current = null;
+    } catch {}
   };
 
   const toggleMic = async () => {
