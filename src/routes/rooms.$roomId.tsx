@@ -799,7 +799,13 @@ function SeatView({
             speaking ? "gradient-electric shadow-glow" : "bg-[linear-gradient(180deg,oklch(0.72_0.22_255),oklch(0.5_0.17_255))]"
           } active:scale-95`}
         >
-          <img src={seat.avatar ?? defaultAvatar(seat.username ?? "u")} alt="" className="h-full w-full rounded-full object-cover" />
+          {host ? (
+            <div className="flex h-full w-full items-center justify-center rounded-full bg-[radial-gradient(circle_at_center,oklch(0.2_0.06_255),oklch(0.1_0.025_270))] text-electric">
+              <Crown className="h-8 w-8" />
+            </div>
+          ) : (
+            <img src={seat.avatar ?? defaultAvatar(seat.username ?? "u")} alt="" className="h-full w-full rounded-full object-cover" />
+          )}
         </button>
         {host && (
           <span className="absolute -top-2 left-1/2 h-8 w-8 -translate-x-1/2 rounded-full grid place-items-center bg-electric text-background shadow-glow-soft">
