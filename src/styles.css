@@ -1,5 +1,6 @@
+@import "tailwindcss";
 @import "tw-animate-css";
-@import "tailwindcss" source(none);
+
 @source "../src";
 
 @custom-variant dark (&:is(.dark *));
@@ -42,7 +43,6 @@
 }
 
 :root {
-  /* Black + Electric Blue premium */
   --background: oklch(0.12 0.025 270);
   --foreground: oklch(0.98 0.005 250);
   --card: oklch(0.17 0.03 270 / 0.6);
