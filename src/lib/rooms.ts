@@ -81,3 +81,10 @@ export function uidFromUserId(uid: string): number {
   for (let i = 0; i < uid.length; i++) h = ((h << 5) + h + uid.charCodeAt(i)) >>> 0;
   return (h & 0x7fffffff) || 1;
 }
+
+// unique permanent SID for a user (deterministic, no DB needed)
+export function sidFromUserId(uid: string): string {
+  let h = 0;
+  for (let i = 0; i < uid.length; i++) h = (h * 31 + uid.charCodeAt(i)) >>> 0;
+  return "CHT" + String(h % 1000000).padStart(6, "0");
+}

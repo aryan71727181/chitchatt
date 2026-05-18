@@ -18,6 +18,12 @@ import {
   Shield,
   UserMinus,
   Trash2,
+  Eye,
+  Info,
+  UserCog,
+  VolumeX,
+  Volume2,
+  BellRing,
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,6 +38,10 @@ import {
   uidFromUserId,
 } from "@/lib/rooms";
 import { toast } from "sonner";
+import { MembersSheet } from "@/components/MembersSheet";
+import { UserProfilePopup } from "@/components/UserProfilePopup";
+import { RoomInfoPanel } from "@/components/RoomInfoPanel";
+import { AdminPanel } from "@/components/AdminPanel";
 
 export const Route = createFileRoute("/rooms/$roomId")({
   component: RoomPage,
@@ -61,11 +71,19 @@ function RoomPage() {
   const [text, setText] = useState("");
   const [showGifts, setShowGifts] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showMembers, setShowMembers] = useState(false);
+  const [showRoomInfo, setShowRoomInfo] = useState(false);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<DBMember | null>(null);
   const [floatGift, setFloatGift] = useState<string | null>(null);
   const [speakingUids, setSpeakingUids] = useState<Set<number>>(new Set());
   const [micOn, setMicOn] = useState(true);
   const [actingOn, setActingOn] = useState<DBSeat | null>(null);
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const [joinNotif, setJoinNotif] = useState<string | null>(null);
+
+  const prevMemberIds = useRef<Set<string>>(new Set());
+  const chatEnd = useRef<HTMLDivElement>(null);
 
   const meMember = useMemo(
     () => members.find((m) => m.user_id === user?.id),
@@ -77,7 +95,6 @@ function RoomPage() {
   );
   const isOwner = meMember?.role === "owner";
   const isMod = meMember && ["owner", "co_owner", "admin"].includes(meMember.role);
-  const chatEnd = useRef<HTMLDivElement>(null);
 
   // Agora refs
   const clientRef = useRef<any>(null);
@@ -96,7 +113,6 @@ function RoomPage() {
         return;
       }
       setRoom(data as DBRoom);
-      // already member?
       if (user) {
         const { data: m } = await supabase
           .from("room_members")
@@ -113,9 +129,7 @@ function RoomPage() {
         }
       }
     })();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, user?.id]);
 
@@ -134,7 +148,21 @@ function RoomPage() {
           .limit(80),
       ]);
       setSeats((s ?? []) as DBSeat[]);
-      setMembers((mb ?? []) as DBMember[]);
+
+      const newMembers = (mb ?? []) as DBMember[];
+      setMembers((prev) => {
+        // Detect new joiners for notification
+        const prevIds = prevMemberIds.current;
+        const newJoiners = newMembers.filter((m) => !prevIds.has(m.user_id) && m.user_id !== user?.id);
+        if (newJoiners.length > 0 && prevIds.size > 0) {
+          const name = newJoiners[0].username;
+          setJoinNotif(name);
+          setTimeout(() => setJoinNotif(null), 3500);
+        }
+        prevMemberIds.current = new Set(newMembers.map((m) => m.user_id));
+        return newMembers;
+      });
+
       setMessages((ms ?? []) as DBMessage[]);
     };
     loadAll();
@@ -155,10 +183,8 @@ function RoomPage() {
       })
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(ch);
-    };
-  }, [roomId, navigate]);
+    return () => { supabase.removeChannel(ch); };
+  }, [roomId, navigate, user?.id]);
 
   // Auto-scroll chat
   useEffect(() => {
@@ -220,13 +246,8 @@ function RoomPage() {
 
     return () => {
       cancelled = true;
-      try {
-        localTrackRef.current?.stop();
-        localTrackRef.current?.close();
-      } catch {}
-      try {
-        client?.leave();
-      } catch {}
+      try { localTrackRef.current?.stop(); localTrackRef.current?.close(); } catch {}
+      try { client?.leave(); } catch {}
       localTrackRef.current = null;
       clientRef.current = null;
       setSpeakingUids(new Set());
@@ -259,7 +280,6 @@ function RoomPage() {
 
   const leaveRoom = async () => {
     if (!user) return;
-    // free seat first
     if (mySeat) {
       await supabase
         .from("room_seats")
@@ -277,11 +297,8 @@ function RoomPage() {
     if (seat.locked) return toast("Seat is locked");
     if (mySeat?.seat_index === seat.seat_index) return;
 
-    if (!joined) {
-      await joinRoom(undefined, room);
-    }
+    if (!joined) await joinRoom(undefined, room);
 
-    // Pre-request mic permission from this user gesture so Agora can publish later
     try {
       if (!micPermRef.current) {
         micPermRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -295,16 +312,12 @@ function RoomPage() {
       return;
     }
     if (mySeat) {
-      // move: free old, claim new in two ops
       const { error: clearError } = await supabase
         .from("room_seats")
         .update({ user_id: null, username: null, avatar: null, joined_at: null, muted: false })
         .eq("room_id", roomId)
         .eq("seat_index", mySeat.seat_index);
-      if (clearError) {
-        toast.error(clearError.message);
-        return;
-      }
+      if (clearError) { toast.error(clearError.message); return; }
     }
     const { error } = await supabase
       .from("room_seats")
@@ -317,10 +330,7 @@ function RoomPage() {
       })
       .eq("room_id", roomId)
       .eq("seat_index", seat.seat_index);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
+    if (error) { toast.error(error.message); return; }
     toast.success(seat.seat_index === 0 ? "You took the host seat" : "Seat joined");
   };
 
@@ -331,10 +341,7 @@ function RoomPage() {
       .update({ user_id: null, username: null, avatar: null, joined_at: null, muted: false })
       .eq("room_id", roomId)
       .eq("seat_index", mySeat.seat_index);
-    try {
-      micPermRef.current?.getTracks().forEach((t) => t.stop());
-      micPermRef.current = null;
-    } catch {}
+    try { micPermRef.current?.getTracks().forEach((t) => t.stop()); micPermRef.current = null; } catch {}
   };
 
   const toggleMic = async () => {
@@ -381,7 +388,7 @@ function RoomPage() {
     });
   };
 
-  // Owner / mod actions
+  // Mod actions
   const kickSeat = async (seat: DBSeat) => {
     await supabase
       .from("room_seats")
@@ -410,10 +417,42 @@ function RoomPage() {
     toast.success(`Promoted to ${role.replace("_", "-")}`);
     setActingOn(null);
   };
+  const muteAll = async () => {
+    const occupiedSeats = seats.filter((s) => s.user_id && s.user_id !== user?.id);
+    await Promise.all(
+      occupiedSeats.map((s) =>
+        supabase.from("room_seats").update({ muted: true }).eq("room_id", roomId).eq("seat_index", s.seat_index)
+      )
+    );
+    toast.success("All users muted");
+  };
   const deleteRoom = async () => {
     if (!isOwner) return;
     await supabase.from("rooms").delete().eq("id", roomId);
     navigate({ to: "/rooms" });
+  };
+
+  // Profile popup helpers from members sheet
+  const getMemberSeat = (userId: string) => seats.find((s) => s.user_id === userId);
+
+  const handleMemberKick = (member: DBMember) => {
+    const seat = getMemberSeat(member.user_id);
+    if (seat) kickSeat(seat);
+    supabase.from("room_members").delete().eq("room_id", roomId).eq("user_id", member.user_id);
+    toast.success(`${member.username} was removed`);
+  };
+  const handleMemberMute = (member: DBMember) => {
+    const seat = getMemberSeat(member.user_id);
+    if (seat) muteSeat(seat);
+    else toast("User is not on a seat");
+  };
+  const handleMemberPromote = async (member: DBMember, role: "co_owner" | "admin") => {
+    await supabase.from("room_members").update({ role }).eq("room_id", roomId).eq("user_id", member.user_id);
+    toast.success(`Promoted to ${role.replace("_", "-")}`);
+  };
+  const handleMemberDemote = async (member: DBMember) => {
+    await supabase.from("room_members").update({ role: "member" }).eq("room_id", roomId).eq("user_id", member.user_id);
+    toast.success(`${member.username} role removed`);
   };
 
   // ---------- Render gates ----------
@@ -457,10 +496,19 @@ function RoomPage() {
 
   const owner = seats.find((s) => s.seat_index === 0);
   const rest = seats.filter((s) => s.seat_index !== 0).sort((a, b) => a.seat_index - b.seat_index);
-  const roomCode = room.id.slice(0, 6).toUpperCase();
 
   return (
     <AppShell hideNav>
+      {/* Join notification toast */}
+      {joinNotif && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[100] animate-fade-up pointer-events-none">
+          <div className="glass-strong rounded-full px-4 py-2 flex items-center gap-2 shadow-card">
+            <BellRing className="h-3.5 w-3.5 text-electric animate-pulse" />
+            <span className="text-xs font-medium">{joinNotif} joined the room</span>
+          </div>
+        </div>
+      )}
+
       {/* Top bar */}
       <header className="px-4 pt-12 pb-3 flex items-start gap-2.5 animate-fade-up">
         <button
@@ -472,23 +520,52 @@ function RoomPage() {
         </button>
         <div className="flex-1 min-w-0">
           <h1 className="font-bold text-[1.1rem] leading-tight truncate">{room.name}</h1>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-            <span className="glass rounded-full px-3 py-1">ID: {roomCode}</span>
-            <span className="glass rounded-full px-3 py-1 text-electric">{room.category}</span>
-            <span className="glass rounded-full px-3 py-1 flex items-center gap-1.5">
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span className="glass rounded-full px-2.5 py-1">{room.category}</span>
+            {/* Eye / Members button */}
+            <button
+              onClick={() => setShowMembers(true)}
+              className="glass rounded-full px-2.5 py-1 flex items-center gap-1.5 active:scale-95 transition-transform"
+            >
+              <Eye className="h-3 w-3 text-electric" />
+              <span className="text-electric font-semibold">{members.length}</span>
+              <span>Members</span>
+            </button>
+            {/* Room info button */}
+            <button
+              onClick={() => setShowRoomInfo(true)}
+              className="glass rounded-full px-2.5 py-1 flex items-center gap-1.5 active:scale-95 transition-transform"
+            >
+              <Info className="h-3 w-3" />
+              <span>Info</span>
+            </button>
+            {/* Live dot */}
+            <span className="glass rounded-full px-2.5 py-1 flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-[oklch(0.7_0.2_150)] animate-pulse" />
-              <Users className="h-3 w-3" /> {members.length} Members
+              Live
             </span>
           </div>
         </div>
-        {isMod && (
-          <button
-            onClick={() => setShowSettings(true)}
-            className="h-10 w-10 rounded-full glass grid place-items-center active:scale-95"
-          >
-            <Settings className="h-4 w-4" />
-          </button>
-        )}
+        {/* Settings + Admin (mods only) */}
+        <div className="flex gap-1.5">
+          {isMod && (
+            <button
+              onClick={() => setShowAdminPanel(true)}
+              className="h-10 w-10 rounded-full glass grid place-items-center active:scale-95"
+              title="Manage team"
+            >
+              <UserCog className="h-4 w-4 text-electric" />
+            </button>
+          )}
+          {isMod && (
+            <button
+              onClick={() => setShowSettings(true)}
+              className="h-10 w-10 rounded-full glass grid place-items-center active:scale-95"
+            >
+              <Settings className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </header>
 
       {/* Stage */}
@@ -511,7 +588,7 @@ function RoomPage() {
                 onTake={() => takeSeat(owner)}
                 onSelf={leaveSeat}
                 isMe={owner.user_id === user?.id}
-                onModerate={isMod && owner.user_id !== user?.id ? () => setActingOn(owner) : undefined}
+                onModerate={isMod && owner.user_id && owner.user_id !== user?.id ? () => setActingOn(owner) : undefined}
               />
             )}
           </div>
@@ -633,7 +710,7 @@ function RoomPage() {
         </div>
       </div>
 
-      {/* Moderation sheet */}
+      {/* Seat moderation sheet */}
       {actingOn && (
         <div
           className="fixed inset-0 z-[80] bg-black/70 backdrop-blur-md flex items-end justify-center animate-fade-up"
@@ -651,13 +728,21 @@ function RoomPage() {
               />
               <div>
                 <p className="font-bold">{actingOn.username ?? "Empty seat"}</p>
-                <p className="text-[11px] text-muted-foreground">Seat {actingOn.seat_index}</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {actingOn.seat_index === 0 ? "Host seat" : `Seat ${actingOn.seat_index}`}
+                  {actingOn.user_id && (() => {
+                    const m = members.find((mb) => mb.user_id === actingOn.user_id);
+                    if (!m) return "";
+                    const roleLabels: Record<string, string> = { co_owner: " · Co-owner", admin: " · Admin", member: "" };
+                    return roleLabels[m.role] ?? "";
+                  })()}
+                </p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
               {actingOn.user_id && (
                 <>
-                  <ModBtn icon={actingOn.muted ? Mic : MicOff} label={actingOn.muted ? "Unmute" : "Mute"} onClick={() => muteSeat(actingOn)} />
+                  <ModBtn icon={actingOn.muted ? Volume2 : VolumeX} label={actingOn.muted ? "Unmute" : "Mute"} onClick={() => muteSeat(actingOn)} />
                   <ModBtn icon={UserMinus} label="Remove seat" onClick={() => kickSeat(actingOn)} />
                   <ModBtn icon={LogOut} label="Kick from room" onClick={() => kickFromRoom(actingOn)} danger />
                   {isOwner && (
@@ -678,9 +763,79 @@ function RoomPage() {
         </div>
       )}
 
+      {/* Members sheet */}
+      {showMembers && (
+        <MembersSheet
+          members={members}
+          onClose={() => setShowMembers(false)}
+          currentUserId={user?.id}
+          onSelectUser={(member) => {
+            setShowMembers(false);
+            setSelectedMember(member);
+          }}
+        />
+      )}
+
+      {/* User profile popup */}
+      {selectedMember && (
+        <UserProfilePopup
+          member={selectedMember}
+          onClose={() => setSelectedMember(null)}
+          isCurrentUser={selectedMember.user_id === user?.id}
+          canModerate={!!isMod}
+          currentUserRole={meMember?.role}
+          onKick={
+            isMod && selectedMember.role !== "owner"
+              ? () => handleMemberKick(selectedMember)
+              : undefined
+          }
+          onMute={
+            isMod && selectedMember.role !== "owner"
+              ? () => handleMemberMute(selectedMember)
+              : undefined
+          }
+          onPromote={
+            (isOwner || meMember?.role === "co_owner") && selectedMember.role === "member"
+              ? (role) => handleMemberPromote(selectedMember, role)
+              : undefined
+          }
+          onDemote={
+            (isOwner || meMember?.role === "co_owner") &&
+            (selectedMember.role === "admin" || (isOwner && selectedMember.role === "co_owner"))
+              ? () => handleMemberDemote(selectedMember)
+              : undefined
+          }
+        />
+      )}
+
+      {/* Room info panel */}
+      {showRoomInfo && (
+        <RoomInfoPanel
+          room={room}
+          memberCount={members.length}
+          onClose={() => setShowRoomInfo(false)}
+        />
+      )}
+
+      {/* Admin management panel */}
+      {showAdminPanel && isMod && (
+        <AdminPanel
+          members={members}
+          roomId={roomId}
+          currentUserRole={meMember?.role ?? "member"}
+          onClose={() => setShowAdminPanel(false)}
+        />
+      )}
+
       {/* Settings */}
       {showSettings && isMod && (
-        <RoomSettings room={room} onClose={() => setShowSettings(false)} onDelete={deleteRoom} />
+        <RoomSettings
+          room={room}
+          isOwner={isOwner}
+          onClose={() => setShowSettings(false)}
+          onDelete={deleteRoom}
+          onMuteAll={muteAll}
+        />
       )}
 
       {/* Leave confirm */}
@@ -836,11 +991,24 @@ function SeatView({
   );
 }
 
-function RoomSettings({ room, onClose, onDelete }: { room: DBRoom; onClose: () => void; onDelete: () => void }) {
+function RoomSettings({
+  room,
+  isOwner,
+  onClose,
+  onDelete,
+  onMuteAll,
+}: {
+  room: DBRoom;
+  isOwner: boolean;
+  onClose: () => void;
+  onDelete: () => void;
+  onMuteAll: () => void;
+}) {
   const [name, setName] = useState(room.name);
   const [description, setDescription] = useState(room.description ?? "");
   const [privacy, setPrivacy] = useState(room.privacy);
   const [password, setPassword] = useState(room.password_hash ?? "");
+  const [locked, setLocked] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const save = async () => {
@@ -850,8 +1018,8 @@ function RoomSettings({ room, onClose, onDelete }: { room: DBRoom; onClose: () =
       .update({
         name: name.trim(),
         description: description.trim(),
-        privacy,
-        password_hash: privacy === "private" ? password.trim() : null,
+        privacy: locked ? "private" : privacy,
+        password_hash: (locked || privacy === "private") ? password.trim() : null,
       })
       .eq("id", room.id);
     setLoading(false);
@@ -862,24 +1030,102 @@ function RoomSettings({ room, onClose, onDelete }: { room: DBRoom; onClose: () =
 
   return (
     <div className="fixed inset-0 z-[90] bg-black/70 backdrop-blur-md flex items-end justify-center animate-fade-up" onClick={onClose}>
-      <div className="w-full max-w-md glass-strong rounded-t-3xl p-5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <h2 className="font-bold text-lg mb-4">Room Settings</h2>
+      <div className="w-full max-w-md glass-strong rounded-t-3xl p-5 max-h-[90vh] overflow-y-auto no-scrollbar" onClick={(e) => e.stopPropagation()}>
+        {/* Handle */}
+        <div className="flex justify-center -mt-1 mb-4">
+          <div className="h-1 w-10 rounded-full bg-white/20" />
+        </div>
+
+        <h2 className="font-bold text-lg mb-1">Room Settings</h2>
+        <p className="text-[11px] text-muted-foreground mb-4">Manage your room configuration</p>
+
         <div className="space-y-3">
-          <input value={name} onChange={(e) => setName(e.target.value)} className="w-full glass rounded-2xl h-11 px-4 text-sm outline-none" />
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className="w-full glass rounded-2xl p-3 text-sm outline-none resize-none" />
-          <div className="grid grid-cols-2 gap-2">
-            <button onClick={() => setPrivacy("public")} className={`h-11 rounded-2xl text-sm font-medium ${privacy === "public" ? "gradient-electric text-white" : "glass text-muted-foreground"}`}>Public</button>
-            <button onClick={() => setPrivacy("private")} className={`h-11 rounded-2xl text-sm font-medium ${privacy === "private" ? "gradient-electric text-white" : "glass text-muted-foreground"}`}>Private</button>
+          {/* Room name */}
+          <div>
+            <label className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1.5 block">Room Name</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full glass rounded-2xl h-11 px-4 text-sm outline-none focus:ring-1 focus:ring-electric"
+            />
           </div>
+
+          {/* Description */}
+          <div>
+            <label className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1.5 block">Description</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={2}
+              className="w-full glass rounded-2xl p-3 text-sm outline-none resize-none focus:ring-1 focus:ring-electric"
+              placeholder="What's the vibe today?"
+            />
+          </div>
+
+          {/* Privacy toggle */}
+          <div>
+            <label className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1.5 block">Privacy</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setPrivacy("public")}
+                className={`h-11 rounded-2xl text-sm font-medium transition-all ${privacy === "public" ? "gradient-electric text-white shadow-glow-soft" : "glass text-muted-foreground"}`}
+              >
+                🌐 Public
+              </button>
+              <button
+                onClick={() => setPrivacy("private")}
+                className={`h-11 rounded-2xl text-sm font-medium transition-all ${privacy === "private" ? "gradient-electric text-white shadow-glow-soft" : "glass text-muted-foreground"}`}
+              >
+                🔒 Private
+              </button>
+            </div>
+          </div>
+
           {privacy === "private" && (
-            <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" className="w-full glass rounded-2xl h-11 px-4 text-sm outline-none" />
+            <input
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Room password"
+              className="w-full glass rounded-2xl h-11 px-4 text-sm outline-none focus:ring-1 focus:ring-electric"
+            />
           )}
-          <button onClick={save} disabled={loading} className="w-full h-12 rounded-2xl gradient-electric text-white font-semibold shadow-glow active:scale-[0.98] disabled:opacity-60">
-            {loading ? "Saving…" : "Save"}
+
+          {/* Quick actions */}
+          <div>
+            <label className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1.5 block">Quick Actions</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => { onMuteAll(); onClose(); }}
+                className="h-11 rounded-2xl glass text-sm font-medium flex items-center justify-center gap-2 active:scale-95"
+              >
+                <VolumeX className="h-4 w-4 text-muted-foreground" /> Mute All
+              </button>
+              <button
+                onClick={() => setLocked((l) => !l)}
+                className={`h-11 rounded-2xl text-sm font-medium flex items-center justify-center gap-2 active:scale-95 ${locked ? "bg-electric/20 text-electric" : "glass text-muted-foreground"}`}
+              >
+                {locked ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
+                {locked ? "Locked" : "Lock Room"}
+              </button>
+            </div>
+          </div>
+
+          <button
+            onClick={save}
+            disabled={loading}
+            className="w-full h-12 rounded-2xl gradient-electric text-white font-semibold shadow-glow active:scale-[0.98] disabled:opacity-60 mt-1"
+          >
+            {loading ? "Saving…" : "Save Changes"}
           </button>
-          <button onClick={onDelete} className="w-full h-12 rounded-2xl bg-[oklch(0.3_0.15_25)] text-[oklch(0.85_0.18_30)] font-semibold active:scale-95 flex items-center justify-center gap-2">
-            <Trash2 className="h-4 w-4" /> Delete Room
-          </button>
+
+          {isOwner && (
+            <button
+              onClick={onDelete}
+              className="w-full h-12 rounded-2xl bg-[oklch(0.3_0.15_25)] text-[oklch(0.85_0.18_30)] font-semibold active:scale-95 flex items-center justify-center gap-2"
+            >
+              <Trash2 className="h-4 w-4" /> Delete Room
+            </button>
+          )}
         </div>
       </div>
     </div>
