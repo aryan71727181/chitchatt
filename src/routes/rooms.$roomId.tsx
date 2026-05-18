@@ -448,11 +448,11 @@ function RoomPage() {
   const rest = seats.filter((s) => s.seat_index !== 0).sort((a, b) => a.seat_index - b.seat_index);
 
   return (
-    <AppShell>
+    <AppShell hideNav>
       {/* Top bar */}
       <header className="px-4 pt-12 pb-3 flex items-center gap-2.5 animate-fade-up">
         <button
-          onClick={leaveRoom}
+          onClick={() => setConfirmLeave(true)}
           className="h-10 w-10 rounded-full glass grid place-items-center active:scale-95"
           aria-label="Back"
         >
@@ -462,10 +462,10 @@ function RoomPage() {
           <h1 className="font-bold text-base leading-tight truncate">{room.name}</h1>
           <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-[oklch(0.7_0.2_150)] animate-pulse" />
-            <Users className="h-3 w-3" /> {room.listener_count} · {room.category}
+            <Users className="h-3 w-3" /> {members.length} Vibing · {room.category}
           </p>
         </div>
-        {isOwner && (
+        {isMod && (
           <button
             onClick={() => setShowSettings(true)}
             className="h-10 w-10 rounded-full glass grid place-items-center active:scale-95"
@@ -473,12 +473,6 @@ function RoomPage() {
             <Settings className="h-4 w-4" />
           </button>
         )}
-        <button
-          onClick={leaveRoom}
-          className="px-3.5 h-10 rounded-full bg-[oklch(0.3_0.15_25)] text-[oklch(0.85_0.18_30)] text-xs font-semibold active:scale-95"
-        >
-          Leave
-        </button>
       </header>
 
       {/* Stage */}
@@ -665,8 +659,41 @@ function RoomPage() {
       )}
 
       {/* Settings */}
-      {showSettings && isOwner && (
+      {showSettings && isMod && (
         <RoomSettings room={room} onClose={() => setShowSettings(false)} onDelete={deleteRoom} />
+      )}
+
+      {/* Leave confirm */}
+      {confirmLeave && (
+        <div
+          className="fixed inset-0 z-[95] bg-black/75 backdrop-blur-md grid place-items-center px-6 animate-fade-up"
+          onClick={() => setConfirmLeave(false)}
+        >
+          <div
+            className="w-full max-w-sm glass-strong rounded-3xl p-6 text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mx-auto h-12 w-12 rounded-full gradient-electric grid place-items-center shadow-glow mb-3">
+              <LogOut className="h-5 w-5 text-white" />
+            </div>
+            <h3 className="font-bold text-lg">Leave Room?</h3>
+            <p className="text-xs text-muted-foreground mt-1">The vibe will miss you.</p>
+            <div className="grid grid-cols-2 gap-2 mt-5">
+              <button
+                onClick={() => setConfirmLeave(false)}
+                className="h-11 rounded-2xl glass text-sm font-semibold active:scale-95"
+              >
+                Stay
+              </button>
+              <button
+                onClick={leaveRoom}
+                className="h-11 rounded-2xl bg-[oklch(0.3_0.15_25)] text-[oklch(0.9_0.18_30)] text-sm font-semibold active:scale-95"
+              >
+                Leave
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </AppShell>
   );
