@@ -8,7 +8,8 @@ import { toggleFollow, checkFollowing } from "@/lib/follows";
 import { getOrCreateDmRoom } from "@/lib/dm";
 import {
   X, UserPlus, UserCheck, MessageCircle, Sparkles,
-  Shield, Star, User, Loader2,
+  Shield, Star, User, Loader2, Settings2, ChevronDown, ChevronUp,
+  VolumeX, UserX, Crown,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -67,6 +68,7 @@ export function UserProfilePopup({
   const [followLoading, setFollowLoading] = useState(false);
   const [msgLoading, setMsgLoading] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
+  const [manageOpen, setManageOpen] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -123,19 +125,42 @@ export function UserProfilePopup({
     });
   }, [user, myProfile, member, navigate, onClose]);
 
-  const sid = sidFromUserId(member.user_id);
+  const sid  = sidFromUserId(member.user_id);
   const meta = ROLE_META[member.role] ?? ROLE_META.member;
   const mood = moodForId(member.user_id);
   const joinDate = profile
     ? new Date(profile.created_at).toLocaleDateString("en-US", { month: "short", year: "numeric" })
     : null;
   const avatar = profile?.profile_image ?? member.avatar ?? defaultAvatar(member.username);
-  const cover = profile?.cover_image ?? defaultCover(member.user_id);
+  const cover  = profile?.cover_image   ?? defaultCover(member.user_id);
 
-  const isOwnerOfRoom = member.role === "owner";
-  const canShowMod = canModerate && !isCurrentUser && !isOwnerOfRoom;
-  const isViewer_owner = currentUserRole === "owner";
-  const isViewer_coowner = currentUserRole === "co_owner";
+  // ---- Manage button permission logic ----
+  const targetRole    = member.role;
+  const viewerRole    = currentUserRole ?? "member";
+  const isTargetOwner = targetRole === "owner";
+
+  // Who can see the Manage button at all?
+  const viewerIsOwner   = viewerRole === "owner";
+  const viewerIsCoOwner = viewerRole === "co_owner";
+  const viewerIsAdmin   = viewerRole === "admin";
+
+  // Admin can only manage plain members
+  const adminCanTarget = viewerIsAdmin && targetRole === "member";
+  // Co-owner can manage members & admins
+  const coOwnerCanTarget = viewerIsCoOwner && (targetRole === "member" || targetRole === "admin");
+  // Owner can manage everyone except other owners
+  const ownerCanTarget = viewerIsOwner && !isTargetOwner;
+
+  const canShowManage =
+    canModerate && !isCurrentUser && !isTargetOwner &&
+    (ownerCanTarget || coOwnerCanTarget || adminCanTarget);
+
+  // Which actions are available?
+  const canRemoveSeat  = canShowManage; // everyone who can manage can remove from seat
+  const canKickRoom    = canShowManage && (viewerIsOwner || viewerIsCoOwner);
+  const canMakeAdmin   = canShowManage && (viewerIsOwner || viewerIsCoOwner) && targetRole === "member";
+  const canMakeCoOwner = canShowManage && viewerIsOwner && (targetRole === "member" || targetRole === "admin");
+  const canRemoveRole  = canShowManage && (viewerIsOwner || viewerIsCoOwner) && (targetRole === "admin" || targetRole === "co_owner");
 
   return (
     <div
@@ -182,7 +207,7 @@ export function UserProfilePopup({
             </div>
             <div className="pb-2 flex-1 min-w-0">
               <h2 className="font-bold text-lg leading-tight truncate">@{member.username}</h2>
-              <p className="text-[11px] text-muted-foreground font-mono mt-0.5">SID: {sid}</p>
+              <p className="text-[11px] text-electric font-mono mt-0.5">{sid}</p>
             </div>
           </div>
 
@@ -210,7 +235,7 @@ export function UserProfilePopup({
             {[
               { label: "Followers", value: loading ? "…" : followerCount.toLocaleString() },
               { label: "Following", value: loading ? "…" : (profile?.following ?? 0).toLocaleString() },
-              { label: "Vibe", value: loading ? "…" : `${profile?.vibe_score ?? 0}` },
+              { label: "Vibe",      value: loading ? "…" : `${profile?.vibe_score ?? 0}` },
             ].map((s) => (
               <div key={s.label} className="glass rounded-2xl py-3 text-center">
                 <p className="font-bold text-sm">{s.value}</p>
@@ -223,10 +248,10 @@ export function UserProfilePopup({
             <p className="text-[11px] text-muted-foreground mb-4">Joined ChitChat · {joinDate}</p>
           )}
 
-          {/* Action buttons */}
+          {/* Action buttons: Follow / Message / Manage */}
           {!isCurrentUser && (
-            <div className="grid grid-cols-3 gap-2 mb-4">
-              {/* Follow button */}
+            <div className={`grid gap-2 mb-4 ${canShowManage ? "grid-cols-3" : "grid-cols-2"}`}>
+              {/* Follow */}
               <button
                 onClick={handleFollow}
                 disabled={followLoading}
@@ -245,7 +270,7 @@ export function UserProfilePopup({
                 )}
               </button>
 
-              {/* Message button */}
+              {/* Message */}
               <button
                 onClick={handleMessage}
                 disabled={msgLoading}
@@ -258,60 +283,147 @@ export function UserProfilePopup({
                 )}
               </button>
 
-              {/* Invite chip */}
-              <button className="h-11 rounded-2xl glass text-xs font-semibold flex items-center justify-center gap-1.5 active:scale-95">
-                <Sparkles className="h-3.5 w-3.5 text-electric" />
-                Invite
-              </button>
+              {/* Manage — only for mods */}
+              {canShowManage && (
+                <button
+                  onClick={() => setManageOpen((o) => !o)}
+                  className={`h-11 rounded-2xl text-xs font-semibold flex items-center justify-center gap-1.5 active:scale-95 transition-all ${
+                    manageOpen
+                      ? "bg-white/15 border border-white/20 text-white"
+                      : "glass text-white/70"
+                  }`}
+                >
+                  <Settings2 className="h-3.5 w-3.5" />
+                  Manage
+                  {manageOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                </button>
+              )}
             </div>
           )}
 
-          {/* Moderation controls */}
-          {canShowMod && (
-            <div className="border-t border-white/8 pt-4">
-              <p className="text-[11px] text-muted-foreground mb-2 font-semibold uppercase tracking-wider">Moderation</p>
-              <div className="grid grid-cols-2 gap-2">
+          {/* Manage panel — expands below the buttons */}
+          {canShowManage && manageOpen && (
+            <div className="mb-4 rounded-2xl overflow-hidden border border-white/10">
+              {/* Header */}
+              <div className="px-4 py-2.5 bg-white/5 border-b border-white/8">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  Manage @{member.username}
+                </p>
+                {viewerIsAdmin && (
+                  <p className="text-[10px] text-yellow-400/80 mt-0.5">
+                    Admin · limited controls only
+                  </p>
+                )}
+              </div>
+
+              <div className="p-3 flex flex-col gap-2">
+                {/* Mute from seat — available to all managers */}
                 {onMute && (
                   <button
                     onClick={() => { onMute(); onClose(); }}
-                    className="h-10 rounded-xl glass text-xs font-medium active:scale-95 flex items-center justify-center gap-1.5"
+                    className="h-11 rounded-xl glass text-sm font-medium flex items-center gap-3 px-4 active:scale-95 w-full text-left"
                   >
-                    <Shield className="h-3.5 w-3.5 text-blue-300" /> Mute
+                    <VolumeX className="h-4 w-4 text-blue-300 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs font-semibold">Mute / Unmute</p>
+                      <p className="text-[10px] text-muted-foreground">Silence this user on stage</p>
+                    </div>
                   </button>
                 )}
-                {onKick && (
+
+                {/* Remove from seat — available to all managers */}
+                {canRemoveSeat && onKick && (
                   <button
                     onClick={() => { onKick(); onClose(); }}
-                    className="h-10 rounded-xl glass text-xs font-medium text-[oklch(0.8_0.18_30)] active:scale-95 flex items-center justify-center gap-1.5"
+                    className="h-11 rounded-xl glass text-sm font-medium flex items-center gap-3 px-4 active:scale-95 w-full text-left"
                   >
-                    <X className="h-3.5 w-3.5" /> Kick
+                    <UserX className="h-4 w-4 text-orange-300 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs font-semibold">Remove from Seat</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {viewerIsAdmin ? "Move to audience (admin limit)" : "Move user to audience"}
+                      </p>
+                    </div>
                   </button>
                 )}
-                {(isViewer_owner || isViewer_coowner) && onPromote && member.role === "member" && (
-                  <>
-                    <button
-                      onClick={() => { onPromote("admin"); onClose(); }}
-                      className="h-10 rounded-xl glass text-xs font-medium text-blue-300 active:scale-95 flex items-center justify-center gap-1.5"
-                    >
-                      <Shield className="h-3.5 w-3.5" /> Make Admin
-                    </button>
-                    {isViewer_owner && (
-                      <button
-                        onClick={() => { onPromote("co_owner"); onClose(); }}
-                        className="h-10 rounded-xl glass text-xs font-medium text-purple-300 active:scale-95 flex items-center justify-center gap-1.5"
-                      >
-                        <Star className="h-3.5 w-3.5" /> Co-owner
-                      </button>
-                    )}
-                  </>
+
+                {/* Kick from room — only owners & co-owners */}
+                {canKickRoom && onKick && (
+                  <button
+                    onClick={() => {
+                      if (confirm(`Remove @${member.username} from the room?`)) {
+                        onKick();
+                        onClose();
+                      }
+                    }}
+                    className="h-11 rounded-xl bg-red-500/10 border border-red-500/20 text-sm font-medium flex items-center gap-3 px-4 active:scale-95 w-full text-left"
+                  >
+                    <X className="h-4 w-4 text-red-400 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs font-semibold text-red-300">Remove from Room</p>
+                      <p className="text-[10px] text-red-400/60">Kick user out entirely</p>
+                    </div>
+                  </button>
                 )}
-                {(isViewer_owner || isViewer_coowner) && onDemote &&
-                  (member.role === "admin" || (isViewer_owner && member.role === "co_owner")) && (
+
+                {/* Divider before role actions */}
+                {(canMakeAdmin || canMakeCoOwner || canRemoveRole) && (
+                  <div className="border-t border-white/8 my-1" />
+                )}
+
+                {/* Make Admin */}
+                {canMakeAdmin && onPromote && (
+                  <button
+                    onClick={() => { onPromote("admin"); onClose(); }}
+                    className="h-11 rounded-xl glass text-sm font-medium flex items-center gap-3 px-4 active:scale-95 w-full text-left"
+                  >
+                    <Shield className="h-4 w-4 text-blue-300 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs font-semibold text-blue-300">Make Admin</p>
+                      <p className="text-[10px] text-muted-foreground">Limited moderation powers</p>
+                    </div>
+                  </button>
+                )}
+
+                {/* Make Co-owner — owner only */}
+                {canMakeCoOwner && onPromote && (
+                  <button
+                    onClick={() => { onPromote("co_owner"); onClose(); }}
+                    className="h-11 rounded-xl glass text-sm font-medium flex items-center gap-3 px-4 active:scale-95 w-full text-left"
+                  >
+                    <Star className="h-4 w-4 text-purple-300 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs font-semibold text-purple-300">Make Co-owner</p>
+                      <p className="text-[10px] text-muted-foreground">Full moderation powers</p>
+                    </div>
+                  </button>
+                )}
+
+                {/* Remove role (demote) — owners & co-owners */}
+                {canRemoveRole && onDemote && (
                   <button
                     onClick={() => { onDemote(); onClose(); }}
-                    className="h-10 rounded-xl glass text-xs font-medium text-muted-foreground active:scale-95 flex items-center justify-center gap-1.5"
+                    className="h-11 rounded-xl glass text-sm font-medium flex items-center gap-3 px-4 active:scale-95 w-full text-left"
                   >
-                    <User className="h-3.5 w-3.5" /> Remove Role
+                    <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    <div>
+                      <p className="text-xs font-semibold">Remove Role</p>
+                      <p className="text-[10px] text-muted-foreground">Demote to regular member</p>
+                    </div>
+                  </button>
+                )}
+
+                {/* Crown transfer — owner only (canShowManage already excludes target owner) */}
+                {viewerIsOwner && canShowManage && (
+                  <button
+                    onClick={() => toast("Crown transfer coming soon")}
+                    className="h-11 rounded-xl glass text-sm font-medium flex items-center gap-3 px-4 active:scale-95 w-full text-left opacity-50"
+                  >
+                    <Crown className="h-4 w-4 text-yellow-400 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs font-semibold text-yellow-300">Transfer Ownership</p>
+                      <p className="text-[10px] text-muted-foreground">Make them the new host</p>
+                    </div>
                   </button>
                 )}
               </div>

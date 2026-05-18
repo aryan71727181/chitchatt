@@ -13,6 +13,7 @@ export function useLiveRooms() {
         .from("rooms")
         .select("*")
         .eq("status", "active")
+        .neq("category", "DM")
         .order("listener_count", { ascending: false })
         .order("created_at", { ascending: false });
       if (alive) {
