@@ -356,7 +356,7 @@ export default function VoiceRoomContent() {
     setSelectedSeat(null);
   };
 
-  const promote = async (userId: string, role: "co_owner" | "admin") => {
+  const promote = async (userId: string, role: "co_owner" | "admin" | "vip") => {
     await supabase.from("room_members").update({ role }).eq("room_id", roomId).eq("user_id", userId);
     toast.success(`Promoted to ${role.replace("_", "-")}`);
   };
