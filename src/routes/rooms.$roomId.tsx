@@ -721,8 +721,8 @@ function RoomPage() {
         <div className="relative rounded-[2rem] border border-white/8 overflow-hidden shadow-card">
           <div className="absolute inset-0">
             <img src={bannerUrl} alt="" className="h-full w-full object-cover"
-              onError={(e) => { e.currentTarget.style.display = "none"; }} />
-            <div className="absolute inset-0 bg-[linear-gradient(180deg,oklch(0.1_0.04_270/0.88),oklch(0.08_0.025_270/0.96))]" />
+              onError={(e) => { e.currentTarget.src = "https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=800&q=80"; }} />
+            <div className="absolute inset-0 bg-[linear-gradient(180deg,oklch(0.08_0.03_270/0.55),oklch(0.06_0.02_270/0.88))]" />
           </div>
           <div className="absolute inset-0 pointer-events-none">
             <div className="absolute inset-x-0 top-0 h-28 bg-[radial-gradient(circle_at_top,oklch(0.74_0.27_350/0.18),transparent_72%)]" />

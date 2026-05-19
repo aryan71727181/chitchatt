@@ -19,6 +19,10 @@ export type Profile = {
   noble_status: boolean;
   last_check_in: string | null;
   created_at: string;
+  // Extended fields
+  level: number;
+  likes: number;
+  coins: number;
 };
 
 type AuthCtx = {
