@@ -6,9 +6,11 @@ import { CATEGORIES, sidFromUserId } from "@/lib/rooms";
 import { useLiveRooms } from "@/lib/useRooms";
 import { RoomCard } from "@/components/RoomCard";
 import { CreateRoomFab, CreateRoomModal } from "@/components/CreateRoomModal";
+import { DeleteRoomModal } from "@/components/DeleteRoomModal";
 import { supabase } from "@/integrations/supabase/client";
 import { defaultAvatar, useAuth } from "@/lib/auth";
 import { toast } from "sonner";
+import type { DBRoom } from "@/lib/rooms";
 
 export const Route = createFileRoute("/discover")({
   head: () => ({
