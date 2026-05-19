@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
@@ -24,18 +23,11 @@ import { RoomInfoPanel } from "@/components/RoomInfoPanel";
 import { SeatRequestsPanel, type SeatRequest } from "@/components/SeatRequestsPanel";
 import { GiftFullscreenAnim } from "@/components/GiftFullscreenAnim";
 import { FloatingReactions } from "@/components/FloatingReactions";
-=======
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState, lazy, Suspense } from "react";
-import { Loader2 } from "lucide-react";
-import { AppShell } from "@/components/AppShell";
->>>>>>> 2b86bdf694afc9a39da1ec01f7bb0e0f16362545
 
 export const Route = createFileRoute("/rooms/$roomId")({
   component: VoiceRoomPage,
 });
 
-<<<<<<< HEAD
 // ── Gifts catalogue ──────────────────────────────────────────────────────────
 const GIFTS = [
   { name: "Rose",       emoji: "🌹",  coins: 10  },
@@ -622,32 +614,11 @@ function RoomPage() {
             <button onClick={() => navigate({ to: "/rooms" })} className="mt-3 text-xs text-muted-foreground">
               Cancel
             </button>
-=======
-// Lazy load the entire content to avoid framer-motion SSR issues
-const VoiceRoomContent = lazy(() => import("@/components/voice-room/VoiceRoomContent"));
-
-function VoiceRoomPage() {
-  // Client-side only detection
-  const [isClient, setIsClient] = useState(false);
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
-  
-  // Render a simple loading state during SSR
-  if (!isClient) {
-    return (
-      <AppShell hideNav>
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="text-center">
-            <Loader2 className="h-8 w-8 animate-spin mx-auto text-electric" />
-            <p className="text-sm text-muted-foreground mt-4">Loading room...</p>
->>>>>>> 2b86bdf694afc9a39da1ec01f7bb0e0f16362545
           </div>
         </div>
       </AppShell>
     );
   }
-<<<<<<< HEAD
 
   const hostSeat    = seats.find((s) => s.seat_index === 0);
   const restSeats   = seats.filter((s) => s.seat_index !== 0).sort((a, b) => a.seat_index - b.seat_index);
@@ -1244,21 +1215,5 @@ function SeatView({ seat, host, speaking, isMe, onTake, onSelf, onProfile, onMod
       )}
       {host && <span className="text-[10px] tracking-[0.16em] text-electric font-semibold">HOST</span>}
     </div>
-=======
-  
-  return (
-    <Suspense fallback={
-      <AppShell hideNav>
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="text-center">
-            <Loader2 className="h-8 w-8 animate-spin mx-auto text-electric" />
-            <p className="text-sm text-muted-foreground mt-4">Loading room...</p>
-          </div>
-        </div>
-      </AppShell>
-    }>
-      <VoiceRoomContent />
-    </Suspense>
->>>>>>> 2b86bdf694afc9a39da1ec01f7bb0e0f16362545
   );
 }
