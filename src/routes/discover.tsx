@@ -283,6 +283,14 @@ function Discover() {
 
       <CreateRoomFab onClick={() => setModalOpen(true)} />
       {modalOpen && <CreateRoomModal onClose={() => setModalOpen(false)} />}
+      {deleteModalRoom && (
+        <DeleteRoomModal
+          roomId={deleteModalRoom.id}
+          roomName={deleteModalRoom.name}
+          onClose={() => setDeleteModalRoom(null)}
+          onDeleted={() => setDeleteModalRoom(null)}
+        />
+      )}
     </AppShell>
   );
 }
