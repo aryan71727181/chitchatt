@@ -32,7 +32,7 @@ type AuthCtx = {
   loading: boolean;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
-  updateProfile: (patch: Partial<Profile>) => Promise<{ error: string | null }>;
+  updateProfile: (patch: Record<string, unknown>) => Promise<{ error: string | null }>;
 };
 
 const Ctx = createContext<AuthCtx | null>(null);
@@ -77,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     updateProfile: async (patch) => {
       if (!session?.user) return { error: "Not signed in" };
-      const { error } = await supabase.from("profiles").update(patch).eq("id", session.user.id);
+      const { error } = await supabase.from("profiles").update(patch as any).eq("id", session.user.id);
       if (error) return { error: error.message };
       await loadProfile(session.user.id);
       return { error: null };
