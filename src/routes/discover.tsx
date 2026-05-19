@@ -6,9 +6,11 @@ import { CATEGORIES, sidFromUserId } from "@/lib/rooms";
 import { useLiveRooms } from "@/lib/useRooms";
 import { RoomCard } from "@/components/RoomCard";
 import { CreateRoomFab, CreateRoomModal } from "@/components/CreateRoomModal";
+import { DeleteRoomModal } from "@/components/DeleteRoomModal";
 import { supabase } from "@/integrations/supabase/client";
 import { defaultAvatar, useAuth } from "@/lib/auth";
 import { toast } from "sonner";
+import type { DBRoom } from "@/lib/rooms";
 
 export const Route = createFileRoute("/discover")({
   head: () => ({
@@ -32,6 +34,7 @@ function Discover() {
   const [active, setActive]       = useState<string>("All");
   const [q, setQ]                 = useState("");
   const [modalOpen, setModalOpen] = useState(false);
+  const [deleteModalRoom, setDeleteModalRoom] = useState<DBRoom | null>(null);
   const { rooms, loading } = useLiveRooms();
 
   const [searchMode, setSearchMode] = useState<"room" | "sid" | "roomid" | null>(null);
@@ -82,13 +85,10 @@ function Discover() {
   const rest      = filtered.slice(1);
   const isSidOrId = searchMode === "sid" || searchMode === "roomid";
 
-  const deleteRoom = async (roomId: string, e: React.MouseEvent) => {
+  const openDeleteModal = (room: DBRoom, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!confirm("Delete this room? This cannot be undone.")) return;
-    const { error } = await supabase.from("rooms").delete().eq("id", roomId).eq("owner_id", user!.id);
-    if (error) toast.error(error.message);
-    else toast.success("Room deleted");
+    setDeleteModalRoom(room);
   };
 
   return (
@@ -248,13 +248,13 @@ function Discover() {
                 <div className="mb-4 relative">
                   <RoomCard room={featured} large />
                   {user && featured.owner_id === user.id && (
-                    <button
-                      onClick={(e) => deleteRoom(featured.id, e)}
-                      className="absolute top-3 right-3 z-10 h-8 w-8 rounded-full bg-black/70 backdrop-blur grid place-items-center active:scale-95 transition-transform"
-                      title="Delete room"
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-red-400" />
-                    </button>
+                  <button
+                    onClick={(e) => openDeleteModal(featured, e)}
+                    className="absolute top-3 right-3 z-10 h-8 w-8 rounded-full bg-black/70 backdrop-blur grid place-items-center active:scale-95 transition-transform"
+                    title="Delete room"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                  </button>
                   )}
                 </div>
               )}
@@ -264,13 +264,13 @@ function Discover() {
                     <div key={r.id} className="relative">
                       <RoomCard room={r} />
                       {user && r.owner_id === user.id && (
-                        <button
-                          onClick={(e) => deleteRoom(r.id, e)}
-                          className="absolute top-2 right-2 z-10 h-7 w-7 rounded-full bg-black/70 backdrop-blur grid place-items-center active:scale-95 transition-transform"
-                          title="Delete room"
-                        >
-                          <Trash2 className="h-3 w-3 text-red-400" />
-                        </button>
+                      <button
+                        onClick={(e) => openDeleteModal(r, e)}
+                        className="absolute top-2 right-2 z-10 h-7 w-7 rounded-full bg-black/70 backdrop-blur grid place-items-center active:scale-95 transition-transform"
+                        title="Delete room"
+                      >
+                        <Trash2 className="h-3 w-3 text-red-400" />
+                      </button>
                       )}
                     </div>
                   ))}
@@ -283,6 +283,14 @@ function Discover() {
 
       <CreateRoomFab onClick={() => setModalOpen(true)} />
       {modalOpen && <CreateRoomModal onClose={() => setModalOpen(false)} />}
+      {deleteModalRoom && (
+        <DeleteRoomModal
+          roomId={deleteModalRoom.id}
+          roomName={deleteModalRoom.name}
+          onClose={() => setDeleteModalRoom(null)}
+          onDeleted={() => setDeleteModalRoom(null)}
+        />
+      )}
     </AppShell>
   );
 }

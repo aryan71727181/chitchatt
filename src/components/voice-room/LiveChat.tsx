@@ -112,7 +112,7 @@ export function LiveChat({
             const role = getMemberRole(msg.user_id);
             const badge = ROLE_BADGES[role];
             const isGift = msg.kind === "gift";
-            const isSystem = msg.kind === "system";
+            const isSystem = (msg.kind as string) === "system";
 
             if (isSystem) {
               return (
