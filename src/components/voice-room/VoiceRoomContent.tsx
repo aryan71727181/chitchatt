@@ -34,6 +34,7 @@ import {
   BottomControlBar,
 } from "@/components/voice-room";
 import { UserProfilePopup } from "@/components/UserProfilePopup";
+import { MembersSheet } from "@/components/MembersSheet";
 
 export default function VoiceRoomContent() {
   const { roomId } = useParams({ from: "/rooms/$roomId" });
