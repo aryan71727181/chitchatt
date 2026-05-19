@@ -424,7 +424,7 @@ export function HostControlPanel({
                             )}
                             whileTap={{ scale: 0.95 }}
                           >
-                            {limit === 0 ? "None" : limit}
+                            {limit === 0 ? "No Limit" : limit}
                           </motion.button>
                         ))}
                       </div>

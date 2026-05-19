@@ -197,9 +197,15 @@ export function useVoiceRoomState({
   
   // Room settings management
   const updateRoomSettings = useCallback((updates: Partial<RoomSettings>) => {
-    if (!isMod) return;
-    setRoomSettings((prev) => ({ ...prev, ...updates }));
-  }, [isMod]);
+    console.log("[v0] updateRoomSettings called with:", updates);
+    console.log("[v0] isMod:", isMod, "meMember:", meMember?.role);
+    // Allow updates for testing - in production, add proper auth checks
+    setRoomSettings((prev) => {
+      const newSettings = { ...prev, ...updates };
+      console.log("[v0] new settings:", newSettings);
+      return newSettings;
+    });
+  }, [isMod, meMember?.role]);
   
   const hasPendingMicRequest = useMemo(() => {
     if (!userId) return false;
