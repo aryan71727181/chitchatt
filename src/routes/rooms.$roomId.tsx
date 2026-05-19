@@ -56,7 +56,7 @@ function calcLeaderboard(messages: DBMessage[]) {
 }
 
 // ── Main Component ───────────────────────────────────────────────────────────
-function RoomPage() {
+function VoiceRoomPage() {
   const { roomId } = Route.useParams();
   const { user, profile } = useAuth();
   const navigate = useNavigate();
