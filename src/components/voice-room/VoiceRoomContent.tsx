@@ -499,9 +499,14 @@ export default function VoiceRoomContent() {
         members={members}
         speakerCount={speakerCount}
         onBack={() => setConfirmLeave(true)}
-        onShare={() => {
-          navigator.clipboard.writeText(window.location.href);
-          toast.success("Room link copied!");
+        onShare={async () => {
+          try {
+            await navigator.clipboard.writeText(window.location.href);
+            toast.success("Room link copied!");
+          } catch {
+            // Fallback for environments where clipboard API is blocked
+            toast.info("Share this room link with friends!");
+          }
         }}
         onInvite={() => toast("Invite feature coming soon")}
         onOpenMembers={() => setShowMembers(true)}
