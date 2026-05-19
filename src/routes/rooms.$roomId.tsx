@@ -177,7 +177,14 @@ function RoomPage() {
         (supabase as any).from("seat_requests").select("*").eq("room_id", roomId).order("created_at"),
       ]);
 
-      setSeats((s ?? []) as DBSeat[]);
+      // Auto-init seats if room has none (e.g. old rooms created before fix)
+      let seatRows = (s ?? []) as DBSeat[];
+      if (seatRows.length === 0) {
+        const toInsert = Array.from({ length: 8 }, (_, i) => ({ room_id: roomId, seat_index: i }));
+        const { data: newSeats } = await supabase.from("room_seats").insert(toInsert).select();
+        seatRows = (newSeats ?? []) as DBSeat[];
+      }
+      setSeats(seatRows);
       setBannedIds(new Set(((bns ?? []) as Array<{ user_id: string }>).map((b) => b.user_id)));
       setSeatRequests((reqs ?? []) as SeatRequest[]);
 

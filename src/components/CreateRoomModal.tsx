@@ -43,6 +43,14 @@ export function CreateRoomModal({ onClose }: { onClose: () => void }) {
       toast.error(error?.message ?? "Failed to create room");
       return;
     }
+
+    // Create 8 empty seats for the room (seat 0 = host seat)
+    const seatRows = Array.from({ length: 8 }, (_, i) => ({
+      room_id: data.id,
+      seat_index: i,
+    }));
+    await supabase.from("room_seats").insert(seatRows);
+
     toast.success("Room created");
     onClose();
     navigate({ to: "/rooms/$roomId", params: { roomId: data.id } });

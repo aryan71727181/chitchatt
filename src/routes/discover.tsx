@@ -1,13 +1,14 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, Sparkles, User, Hash, SlidersHorizontal, X } from "lucide-react";
+import { Search, Sparkles, User, Hash, SlidersHorizontal, X, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { CATEGORIES, sidFromUserId } from "@/lib/rooms";
 import { useLiveRooms } from "@/lib/useRooms";
 import { RoomCard } from "@/components/RoomCard";
 import { CreateRoomFab, CreateRoomModal } from "@/components/CreateRoomModal";
 import { supabase } from "@/integrations/supabase/client";
-import { defaultAvatar } from "@/lib/auth";
+import { defaultAvatar, useAuth } from "@/lib/auth";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/discover")({
   head: () => ({
@@ -27,6 +28,7 @@ const UUID_RE = /^[0-9a-f]{8}/i;
 
 function Discover() {
   const navigate  = useNavigate();
+  const { user }  = useAuth();
   const [active, setActive]       = useState<string>("All");
   const [q, setQ]                 = useState("");
   const [modalOpen, setModalOpen] = useState(false);
@@ -79,6 +81,15 @@ function Discover() {
   const featured = filtered[0];
   const rest      = filtered.slice(1);
   const isSidOrId = searchMode === "sid" || searchMode === "roomid";
+
+  const deleteRoom = async (roomId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm("Delete this room? This cannot be undone.")) return;
+    const { error } = await supabase.from("rooms").delete().eq("id", roomId).eq("owner_id", user!.id);
+    if (error) toast.error(error.message);
+    else toast.success("Room deleted");
+  };
 
   return (
     <AppShell>
@@ -234,13 +245,35 @@ function Discover() {
           ) : (
             <div className="px-4 mt-4 pb-32">
               {featured && (
-                <div className="mb-4">
+                <div className="mb-4 relative">
                   <RoomCard room={featured} large />
+                  {user && featured.owner_id === user.id && (
+                    <button
+                      onClick={(e) => deleteRoom(featured.id, e)}
+                      className="absolute top-3 right-3 z-10 h-8 w-8 rounded-full bg-black/70 backdrop-blur grid place-items-center active:scale-95 transition-transform"
+                      title="Delete room"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                    </button>
+                  )}
                 </div>
               )}
               {rest.length > 0 && (
                 <div className="grid grid-cols-2 gap-3">
-                  {rest.map((r) => <RoomCard key={r.id} room={r} />)}
+                  {rest.map((r) => (
+                    <div key={r.id} className="relative">
+                      <RoomCard room={r} />
+                      {user && r.owner_id === user.id && (
+                        <button
+                          onClick={(e) => deleteRoom(r.id, e)}
+                          className="absolute top-2 right-2 z-10 h-7 w-7 rounded-full bg-black/70 backdrop-blur grid place-items-center active:scale-95 transition-transform"
+                          title="Delete room"
+                        >
+                          <Trash2 className="h-3 w-3 text-red-400" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
